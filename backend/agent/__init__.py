@@ -1,11 +1,15 @@
 """
-Simple Chat Agent using PocketFlow framework.
+Simple Streaming Chat Agent using PocketFlow framework.
 
-This package provides a chat agent implementation using the PocketFlow
-framework for LLM workflow orchestration.
+This package provides a streaming chat agent implementation that yields
+chunks in real-time from OpenAI's streaming API.
 """
 
-from .flow import run_chat, create_chat_flow
-from .nodes import ChatNode
+from .main import run_streaming_chat, StreamNode
+from .utils import stream_llm
 
-__all__ = ["run_chat", "create_chat_flow", "ChatNode"]
+__all__ = [
+    "run_streaming_chat",
+    "StreamNode",
+    "stream_llm"
+]

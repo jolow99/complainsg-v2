@@ -1,6 +1,7 @@
 import { LogOut, BarChart3, User, Plus, MessageSquare, Settings } from "lucide-react"
 import { useNavigate } from "@tanstack/react-router"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { useConversations } from "@/hooks/useConversations"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,13 +23,6 @@ import {
 import { DarkModeToggle } from "@/components/DarkModeToggle"
 import type { User as UserType } from "@/types/auth"
 
-interface ChatHistoryItem {
-  id: string
-  title: string
-  lastMessage: string
-  timestamp: Date
-}
-
 interface AppSidebarProps {
   user: UserType
   onLogout: () => void
@@ -37,29 +31,10 @@ interface AppSidebarProps {
 
 export function AppSidebar({ user, onLogout, onGoPulse }: AppSidebarProps) {
   const navigate = useNavigate()
-  // Mock chat history data - replace with actual data later
-  const chatHistory: ChatHistoryItem[] = [
-    {
-      id: '1',
-      title: 'Road Pothole Issue',
-      lastMessage: 'Thank you for the feedback...',
-      timestamp: new Date('2024-01-15T10:30:00')
-    },
-    {
-      id: '2',
-      title: 'Public Transport Delay',
-      lastMessage: 'I understand your concern...',
-      timestamp: new Date('2024-01-14T15:45:00')
-    },
-    {
-      id: '3',
-      title: 'Park Maintenance',
-      lastMessage: 'Let me help you with this...',
-      timestamp: new Date('2024-01-13T09:20:00')
-    }
-  ]
+  const { data: conversations, isLoading: conversationsLoading } = useConversations()
 
-  const formatTimestamp = (date: Date) => {
+  const formatTimestamp = (dateString: string) => {
+    const date = new Date(dateString)
     const now = new Date()
     const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
 
@@ -69,6 +44,14 @@ export function AppSidebar({ user, onLogout, onGoPulse }: AppSidebarProps) {
       const diffInDays = Math.floor(diffInHours / 24)
       return `${diffInDays}d ago`
     }
+  }
+
+  const handleConversationClick = (conversationId: string) => {
+    navigate({ to: '/chat', search: { conversation: conversationId } })
+  }
+
+  const handleNewChat = () => {
+    navigate({ to: '/chat' })
   }
 
   // Get user initials for avatar fallback
@@ -98,6 +81,7 @@ export function AppSidebar({ user, onLogout, onGoPulse }: AppSidebarProps) {
         {/* New Chat Button */}
         <div className="p-2">
           <SidebarMenuButton
+            onClick={handleNewChat}
             className="w-full justify-center bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90"
             tooltip="New Chat"
           >
@@ -116,32 +100,47 @@ export function AppSidebar({ user, onLogout, onGoPulse }: AppSidebarProps) {
             </h3>
           </div>
           <div className="overflow-y-auto max-h-[calc(100vh-16rem)]">
-            <SidebarMenu>
-              {chatHistory.map((chat) => (
-                <SidebarMenuItem key={chat.id}>
-                  <SidebarMenuButton
-                    asChild
-                    tooltip={chat.title}
-                    className="h-auto py-2 px-2"
-                  >
-                    <a href="#" className="flex flex-col items-start gap-1 w-full">
-                      <div className="flex items-center gap-2 w-full">
-                        <MessageSquare className="h-3 w-3 flex-shrink-0" />
-                        <span className="text-sm font-medium truncate group-data-[collapsible=icon]:hidden">
-                          {chat.title}
-                        </span>
+            {conversationsLoading ? (
+              <div className="p-4 text-center text-sidebar-foreground/60">
+                Loading conversations...
+              </div>
+            ) : (
+              <SidebarMenu>
+                {conversations?.map((conversation) => (
+                  <SidebarMenuItem key={conversation.id}>
+                    <SidebarMenuButton
+                      onClick={() => handleConversationClick(conversation.id)}
+                      tooltip={conversation.title}
+                      className="h-auto py-2 px-2"
+                    >
+                      <div className="flex flex-col items-start gap-1 w-full">
+                        <div className="flex items-center gap-2 w-full">
+                          <MessageSquare className="h-3 w-3 flex-shrink-0" />
+                          <span className="text-sm font-medium truncate group-data-[collapsible=icon]:hidden">
+                            {conversation.title}
+                          </span>
+                        </div>
+                        {conversation.last_message && (
+                          <div className="text-xs text-sidebar-foreground/60 truncate w-full group-data-[collapsible=icon]:hidden">
+                            {conversation.last_message}
+                          </div>
+                        )}
+                        <div className="text-xs text-sidebar-foreground/40 group-data-[collapsible=icon]:hidden">
+                          {formatTimestamp(conversation.updated_at)}
+                        </div>
                       </div>
-                      <div className="text-xs text-sidebar-foreground/60 truncate w-full group-data-[collapsible=icon]:hidden">
-                        {chat.lastMessage}
-                      </div>
-                      <div className="text-xs text-sidebar-foreground/40 group-data-[collapsible=icon]:hidden">
-                        {formatTimestamp(chat.timestamp)}
-                      </div>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+                {conversations?.length === 0 && (
+                  <div className="p-4 text-center text-sidebar-foreground/60 text-sm">
+                    No conversations yet.
+                    <br />
+                    Start a new chat to begin!
+                  </div>
+                )}
+              </SidebarMenu>
+            )}
           </div>
         </div>
 

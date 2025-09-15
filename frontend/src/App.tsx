@@ -1,6 +1,5 @@
 import { createRouter, RouterProvider } from '@tanstack/react-router'
 import { useCurrentUser } from '@/hooks/useAuth'
-import type { RouterContext } from '@/types/router'
 
 // Import the generated route tree
 import { routeTree } from './routeTree.gen'
@@ -10,7 +9,7 @@ const router = createRouter({
   routeTree,
   context: {
     user: undefined,
-  } as RouterContext
+  }
 })
 
 // Register the router instance for type safety

@@ -2,7 +2,16 @@ import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
 import { ChatPage } from '@/pages/chat'
 import { MainLayout } from '@/layout/MainLayout'
 
+type ChatSearch = {
+  conversation?: string
+}
+
 export const Route = createFileRoute('/chat')({
+  validateSearch: (search: Record<string, unknown>): ChatSearch => {
+    return {
+      conversation: typeof search.conversation === 'string' ? search.conversation : undefined,
+    }
+  },
   beforeLoad: ({ context }) => {
     // If user is not logged in, redirect to auth
     if (!context.user) {
@@ -17,6 +26,7 @@ export const Route = createFileRoute('/chat')({
 function Chat() {
   const navigate = useNavigate()
   const { user } = Route.useRouteContext()
+  const { conversation: conversationId } = Route.useSearch()
 
   const handleLogout = () => {
     localStorage.removeItem('access_token')
@@ -34,7 +44,7 @@ function Chat() {
 
   return (
     <MainLayout user={user} onLogout={handleLogout} onGoPulse={handleGoPulse}>
-      <ChatPage />
+      <ChatPage conversationId={conversationId} />
     </MainLayout>
   )
 }

@@ -3,22 +3,26 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChatMessage } from './components/ChatMessage';
-import { useChat } from '@/hooks/useChat';
+import { useChatWithConversations } from '@/hooks/useChatWithConversations';
 import { Send, RotateCcw } from 'lucide-react';
 
 interface ChatPageProps {
-  // No props needed now since layout handles user info
+  conversationId?: string;
 }
 
-export function ChatPage({}: ChatPageProps) {
+export function ChatPage({ conversationId }: ChatPageProps) {
   const [input, setInput] = useState('');
   const {
     conversationHistory,
+    currentConversationId,
     sendChatMessage,
     clearConversation,
     isLoading,
-    error
-  } = useChat();
+    loadingConversation,
+    error,
+    streamingMessage,
+    isStreaming
+  } = useChatWithConversations(conversationId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -27,7 +31,7 @@ export function ChatPage({}: ChatPageProps) {
 
   useEffect(() => {
     scrollToBottom();
-  }, [conversationHistory]);
+  }, [conversationHistory, streamingMessage]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,14 +41,31 @@ export function ChatPage({}: ChatPageProps) {
     setInput('');
   };
 
+  // Show loading state while loading conversation
+  if (loadingConversation) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+          <p className="mt-2 text-muted-foreground">Loading conversation...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-full flex-col">
       {/* Chat Header */}
       <div className="flex items-center justify-between border-b px-6 py-4">
         <div>
-          <h1 className="text-lg font-semibold">Chat Assistant</h1>
+          <h1 className="text-lg font-semibold">
+            {currentConversationId ? 'Chat Conversation' : 'New Chat'}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            Ask me anything. I'm here to help!
+            {currentConversationId
+              ? 'Continue your conversation'
+              : 'Ask me anything. I\'m here to help!'
+            }
           </p>
         </div>
         <Button
@@ -54,7 +75,7 @@ export function ChatPage({}: ChatPageProps) {
           disabled={conversationHistory.length === 0}
         >
           <RotateCcw className="h-4 w-4 mr-2" />
-          Clear Chat
+          {currentConversationId ? 'New Chat' : 'Clear Chat'}
         </Button>
       </div>
 
@@ -83,7 +104,23 @@ export function ChatPage({}: ChatPageProps) {
                     <ChatMessage message={msg.assistant} isUser={false} />
                   </div>
                 ))}
-                {isLoading && (
+                {/* Show streaming message in real-time */}
+                {isStreaming && streamingMessage && (
+                  <div className="flex justify-start mb-4">
+                    <Card className="max-w-[80%] p-3 bg-muted">
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-medium">🤖 Assistant</div>
+                        <div className="text-xs text-blue-600">✍️ Streaming...</div>
+                      </div>
+                      <div className="mt-1 text-sm whitespace-pre-wrap">
+                        {streamingMessage}
+                        <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse">|</span>
+                      </div>
+                    </Card>
+                  </div>
+                )}
+                {/* Show loading state when not streaming */}
+                {isLoading && !isStreaming && (
                   <div className="flex justify-start mb-4">
                     <Card className="max-w-[80%] p-3 bg-muted">
                       <div className="flex items-center gap-2">
