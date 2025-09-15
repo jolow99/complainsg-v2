@@ -1,0 +1,7 @@
+.env
+backend/__pycache__
+backend/app/__pycache__
+backend/agent/__pycache__
+backend/agent/utils/__pycache__
+CLAUDE.md
+POCKETFLOW.md
