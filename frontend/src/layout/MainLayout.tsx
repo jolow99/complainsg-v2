@@ -5,13 +5,14 @@ import type { User } from "@/types/auth"
 interface MainLayoutProps {
   user: User
   onLogout: () => void
+  onGoPulse?: () => void
   children: React.ReactNode
 }
 
-export function MainLayout({ user, onLogout, children }: MainLayoutProps) {
+export function MainLayout({ user, onLogout, onGoPulse, children }: MainLayoutProps) {
   return (
     <SidebarProvider>
-      <AppSidebar user={user} onLogout={onLogout} />
+      <AppSidebar user={user} onLogout={onLogout} onGoPulse={onGoPulse} />
       <SidebarInset>
         <div className="flex h-screen flex-col">
           {/* Header with sidebar trigger */}

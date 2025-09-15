@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:16
-    container_name: sail-postgres
+    container_name: complainsg-postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -19,7 +19,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: sail-backend
+    container_name: complainsg-backend
     ports:
       - "${BACKEND_PORT}:8000"
     environment:
@@ -40,7 +40,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: sail-frontend
+    container_name: complainsg-frontend
     ports:
       - "${FRONTEND_PORT}:3000"
     volumes:

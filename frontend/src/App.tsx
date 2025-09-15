@@ -1,15 +1,27 @@
-import { AuthPage } from '@/pages/auth';
-import { ChatPage } from '@/pages/chat';
-import { MainLayout } from '@/layout/MainLayout';
-import { useCurrentUser } from '@/hooks/useAuth';
+import { createRouter, RouterProvider } from '@tanstack/react-router'
+import { useCurrentUser } from '@/hooks/useAuth'
+import type { RouterContext } from '@/types/router'
+
+// Import the generated route tree
+import { routeTree } from './routeTree.gen'
+
+// Create a new router instance
+const router = createRouter({
+  routeTree,
+  context: {
+    user: undefined,
+  } as RouterContext
+})
+
+// Register the router instance for type safety
+declare module '@tanstack/react-router' {
+  interface Register {
+    router: typeof router
+  }
+}
 
 function App() {
-  const { data: user, isLoading } = useCurrentUser();
-
-  const handleLogout = () => {
-    localStorage.removeItem('access_token');
-    window.location.reload();
-  };
+  const { data: user, isLoading } = useCurrentUser()
 
   if (isLoading) {
     return (
@@ -19,18 +31,17 @@ function App() {
           <p className="mt-2 text-muted-foreground">Loading...</p>
         </div>
       </div>
-    );
+    )
   }
 
-  if (user) {
-    return (
-      <MainLayout user={user} onLogout={handleLogout}>
-        <ChatPage />
-      </MainLayout>
-    );
-  }
-
-  return <AuthPage />;
+  return (
+    <RouterProvider
+      router={router}
+      context={{
+        user,
+      }}
+    />
+  )
 }
 
 export default App
