@@ -36,8 +36,7 @@ function Chat() {
   }
 
   const handleGoPulse = () => {
-    // Placeholder for pulse navigation - implement when pulse is ready
-    alert('Pulse analytics platform coming soon!')
+    navigate({ to: '/pulse' })
   }
 
   // user is guaranteed to exist here due to beforeLoad check

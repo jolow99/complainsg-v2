@@ -19,6 +19,7 @@ from app.conversations import (
     create_conversation_with_messages
 )
 from agent import run_streaming_chat
+from app.pulse import router as pulse_router
 
 app = FastAPI()
 
@@ -69,6 +70,9 @@ app.include_router(
     prefix="/users",
     tags=["users"],
 )
+
+# Include Pulse analytics routes
+app.include_router(pulse_router)
 
 @app.get("/")
 async def root():

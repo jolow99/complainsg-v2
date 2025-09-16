@@ -1,7 +1,9 @@
 import json
 import yaml
+import asyncio
 from pocketflow import Node
-from .utils import call_llm, get_singapore_resources, save_complaint
+from .utils import call_llm, get_singapore_resources
+from .utils.save_complaint import save_complaint
 
 class InitialAssessmentNode(Node):
     """
@@ -237,8 +239,8 @@ class ComplaintStorageNode(Node):
         category = prep_res["category"]
         complaint_text = prep_res["complaint_text"]
 
-        # Save complaint and get ID
-        complaint_id = save_complaint(complaint_data)
+        # Save complaint and get ID (run async function in sync context)
+        complaint_id = asyncio.run(save_complaint(complaint_data))
 
         # Get relevant resources for this complaint
         resources = get_singapore_resources(category)

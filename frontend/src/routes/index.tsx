@@ -13,8 +13,7 @@ function Index() {
   }
 
   const handleExplorePulse = () => {
-    // For now, just redirect to get started - you can implement pulse later
-    navigate({ to: '/auth' })
+    navigate({ to: '/pulse' })
   }
 
   return (

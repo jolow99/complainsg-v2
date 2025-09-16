@@ -74,9 +74,10 @@ export function ChatMessage({ message, isUser }: ChatMessageProps) {
           {isUser ? (
             <div className="whitespace-pre-wrap">{message}</div>
           ) : (
-            <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:bg-transparent prose-pre:p-0 prose-pre:m-0 prose-p:my-4 prose-p:leading-relaxed">
+            <div className="prose prose-base max-w-none dark:prose-invert prose-pre:bg-transparent prose-pre:p-0 prose-pre:m-0 prose-p:my-6 prose-p:leading-relaxed prose-li:my-2 prose-ul:my-4 prose-ol:my-4">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
+                breaks={true}
                 components={{
                   pre: CodeBlock,
                   code: ({ node, ...props }: any) =>
