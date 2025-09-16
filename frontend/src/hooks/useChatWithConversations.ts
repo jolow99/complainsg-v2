@@ -67,7 +67,7 @@ export function useChatWithConversations(conversationId?: string) {
             setStreamingMessage(prev => prev + content)
           },
           // onComplete - finalize and save
-          async (fullResponse: string, conversationId?: string) => {
+          async (fullResponse: string) => {
             try {
               setIsStreaming(false)
               setStreamingMessage('')
