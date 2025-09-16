@@ -4,7 +4,9 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChatMessage } from './components/ChatMessage';
 import { useChatWithConversations } from '@/hooks/useChatWithConversations';
-import { Send, RotateCcw } from 'lucide-react';
+import { Send } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ChatPageProps {
   conversationId?: string;
@@ -14,9 +16,7 @@ export function ChatPage({ conversationId }: ChatPageProps) {
   const [input, setInput] = useState('');
   const {
     conversationHistory,
-    currentConversationId,
     sendChatMessage,
-    clearConversation,
     isLoading,
     loadingConversation,
     error,
@@ -55,34 +55,10 @@ export function ChatPage({ conversationId }: ChatPageProps) {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Chat Header */}
-      <div className="flex items-center justify-between border-b px-6 py-4">
-        <div>
-          <h1 className="text-lg font-semibold">
-            {currentConversationId ? 'Chat Conversation' : 'New Chat'}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {currentConversationId
-              ? 'Continue your conversation'
-              : 'Ask me anything. I\'m here to help!'
-            }
-          </p>
-        </div>
-        <Button
-          onClick={clearConversation}
-          variant="outline"
-          size="sm"
-          disabled={conversationHistory.length === 0}
-        >
-          <RotateCcw className="h-4 w-4 mr-2" />
-          {currentConversationId ? 'New Chat' : 'Clear Chat'}
-        </Button>
-      </div>
-
       {/* Chat Messages */}
       <div className="flex-1 overflow-hidden">
         <div className="h-full flex flex-col">
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto px-4 py-6 max-w-4xl mx-auto w-full">
             {conversationHistory.length === 0 ? (
               <div className="h-full flex items-center justify-center">
                 <Card className="w-full max-w-md text-center">
@@ -98,39 +74,77 @@ export function ChatPage({ conversationId }: ChatPageProps) {
               </div>
             ) : (
               <div className="space-y-4">
-                {conversationHistory.map((msg, index) => (
-                  <div key={index}>
-                    <ChatMessage message={msg.user} isUser={true} />
-                    <ChatMessage message={msg.assistant} isUser={false} />
-                  </div>
-                ))}
-                {/* Show streaming message in real-time */}
-                {isStreaming && streamingMessage && (
-                  <div className="flex justify-start mb-4">
-                    <Card className="max-w-[80%] p-3 bg-muted">
-                      <div className="flex items-center gap-2">
-                        <div className="text-sm font-medium">🤖 Assistant</div>
-                        <div className="text-xs text-blue-600">✍️ Streaming...</div>
-                      </div>
-                      <div className="mt-1 text-sm whitespace-pre-wrap">
-                        {streamingMessage}
-                        <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse">|</span>
-                      </div>
-                    </Card>
-                  </div>
-                )}
+                {conversationHistory.map((msg, index) => {
+                  const isLastMessage = index === conversationHistory.length - 1;
+                  const isStreamingThisMessage = isLastMessage && isStreaming && !msg.assistant;
+
+                  return (
+                    <div key={index}>
+                      <ChatMessage message={msg.user} isUser={true} />
+                      {/* Show assistant message or streaming content */}
+                      {isStreamingThisMessage ? (
+                        /* Streaming assistant message */
+                        <div className="flex justify-start mb-4">
+                          <Card className="max-w-[85%] p-4 bg-white dark:bg-gray-800 border shadow-sm">
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-6 h-6 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white text-xs font-semibold">
+                                AI
+                              </div>
+                              <div className="text-sm font-medium">Assistant</div>
+                              <div className="text-xs text-blue-600 flex items-center gap-1">
+                                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                                Streaming...
+                              </div>
+                            </div>
+                            <div className="text-sm text-gray-900 dark:text-gray-100">
+                              <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:bg-transparent prose-pre:p-0 prose-pre:m-0">
+                                <ReactMarkdown
+                                  remarkPlugins={[remarkGfm]}
+                                  components={{
+                                    pre: ({ children, ...props }: any) => (
+                                      <div className="relative group">
+                                        <pre className="bg-gray-100 dark:bg-gray-800 p-3 rounded-md overflow-x-auto text-sm" {...props}>
+                                          <code>{children}</code>
+                                        </pre>
+                                      </div>
+                                    ),
+                                    code: ({ node, ...props }: any) =>
+                                      props.inline ? (
+                                        <code className="bg-gray-100 dark:bg-gray-700 px-1 py-0.5 rounded text-xs font-mono" {...props} />
+                                      ) : (
+                                        <code {...props} />
+                                      )
+                                  }}
+                                >
+                                  {streamingMessage}
+                                </ReactMarkdown>
+                                <span className="inline-block w-0.5 h-4 ml-1 bg-blue-500 animate-pulse">|</span>
+                              </div>
+                            </div>
+                          </Card>
+                        </div>
+                      ) : msg.assistant ? (
+                        /* Completed assistant message */
+                        <ChatMessage message={msg.assistant} isUser={false} />
+                      ) : null}
+                    </div>
+                  );
+                })}
                 {/* Show loading state when not streaming */}
                 {isLoading && !isStreaming && (
                   <div className="flex justify-start mb-4">
-                    <Card className="max-w-[80%] p-3 bg-muted">
-                      <div className="flex items-center gap-2">
-                        <div className="text-sm font-medium">🤖 Assistant</div>
+                    <Card className="max-w-[85%] p-4 bg-white dark:bg-gray-800 border shadow-sm">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-6 h-6 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white text-xs font-semibold">
+                          AI
+                        </div>
+                        <div className="text-sm font-medium">Assistant</div>
                       </div>
-                      <div className="mt-1 text-sm">
+                      <div className="text-sm">
                         <div className="flex items-center gap-1">
-                          <div className="w-2 h-2 bg-current rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                          <div className="w-2 h-2 bg-current rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                          <div className="w-2 h-2 bg-current rounded-full animate-bounce"></div>
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
                         </div>
                       </div>
                     </Card>
@@ -144,26 +158,30 @@ export function ChatPage({ conversationId }: ChatPageProps) {
           {/* Error Display */}
           {error && (
             <div className="px-4 pb-2">
-              <div className="text-sm text-red-600 bg-red-50 dark:bg-red-950 p-3 rounded-md">
-                Error: {error.message}
+              <div className="max-w-4xl mx-auto w-full">
+                <div className="text-sm text-red-600 bg-red-50 dark:bg-red-950 p-3 rounded-md">
+                  Error: {error.message}
+                </div>
               </div>
             </div>
           )}
 
           {/* Input Form */}
           <div className="border-t bg-card/50 p-4">
-            <form onSubmit={handleSubmit} className="flex gap-2">
-              <Input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Type your message..."
-                disabled={isLoading}
-                className="flex-1"
-              />
-              <Button type="submit" disabled={!input.trim() || isLoading}>
-                <Send className="h-4 w-4" />
-              </Button>
-            </form>
+            <div className="max-w-4xl mx-auto w-full">
+              <form onSubmit={handleSubmit} className="flex gap-2">
+                <Input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Type your message..."
+                  disabled={isLoading}
+                  className="flex-1"
+                />
+                <Button type="submit" disabled={!input.trim() || isLoading}>
+                  <Send className="h-4 w-4" />
+                </Button>
+              </form>
+            </div>
           </div>
         </div>
       </div>
