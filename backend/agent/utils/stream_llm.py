@@ -33,3 +33,14 @@ def stream_llm(messages: List[Dict[str, str]]):
     print("Got response object from OpenAI")
     return response
 
+if __name__ == "__main__":
+    test_messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Hello, how are you?"}
+    ]
+
+    print("Making test streaming call...")
+    chunks = stream_llm(test_messages)
+    for chunk in chunks:
+        if hasattr(chunk.choices[0].delta, 'content') and chunk.choices[0].delta.content is not None:
+            print(chunk.choices[0].delta.content, end="", flush=True)
