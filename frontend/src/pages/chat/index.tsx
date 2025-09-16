@@ -58,22 +58,23 @@ export function ChatPage({ conversationId }: ChatPageProps) {
       {/* Chat Messages */}
       <div className="flex-1 overflow-hidden">
         <div className="h-full flex flex-col">
-          <div className="flex-1 overflow-y-auto px-4 py-6 max-w-4xl mx-auto w-full">
-            {conversationHistory.length === 0 ? (
-              <div className="h-full flex items-center justify-center">
-                <Card className="w-full max-w-md text-center">
-                  <CardHeader>
-                    <CardTitle className="text-xl">👋 Start a conversation!</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground">
-                      Ask me anything. I'm here to help with questions, tasks, or just have a chat.
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-            ) : (
-              <div className="space-y-4">
+          <div className="flex-1 overflow-y-auto scrollbar-hide">
+            <div className="px-4 py-6 max-w-4xl mx-auto w-full">
+              {conversationHistory.length === 0 ? (
+                <div className="h-full flex items-center justify-center">
+                  <Card className="w-full max-w-md text-center">
+                    <CardHeader>
+                      <CardTitle className="text-xl">👋 Start a conversation!</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-muted-foreground">
+                        Ask me anything. I'm here to help with questions, tasks, or just have a chat.
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+              ) : (
+                <div className="space-y-4">
                 {conversationHistory.map((msg, index) => {
                   const isLastMessage = index === conversationHistory.length - 1;
                   const isStreamingThisMessage = isLastMessage && isStreaming && !msg.assistant;
@@ -97,7 +98,7 @@ export function ChatPage({ conversationId }: ChatPageProps) {
                               </div>
                             </div>
                             <div className="text-sm text-gray-900 dark:text-gray-100">
-                              <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:bg-transparent prose-pre:p-0 prose-pre:m-0">
+                              <div className="prose prose-sm max-w-none dark:prose-invert prose-pre:bg-transparent prose-pre:p-0 prose-pre:m-0 prose-p:my-4 prose-p:leading-relaxed">
                                 <ReactMarkdown
                                   remarkPlugins={[remarkGfm]}
                                   components={{
@@ -150,9 +151,10 @@ export function ChatPage({ conversationId }: ChatPageProps) {
                     </Card>
                   </div>
                 )}
-                <div ref={messagesEndRef} />
-              </div>
-            )}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Error Display */}

@@ -78,8 +78,20 @@ export function AppSidebar({ user, onLogout, onGoPulse }: AppSidebarProps) {
       </SidebarHeader>
 
       <SidebarContent>
-        {/* New Chat Button */}
+        {/* Go to Pulse Button - moved to top */}
         <div className="p-2">
+          <SidebarMenuButton
+            onClick={onGoPulse}
+            className="w-full justify-center bg-orange-600 text-white hover:bg-orange-700 mb-2"
+            tooltip="Go to Pulse"
+          >
+            <BarChart3 className="h-4 w-4" />
+            <span className="group-data-[collapsible=icon]:hidden font-semibold">Go to Pulse</span>
+          </SidebarMenuButton>
+        </div>
+
+        {/* New Chat Button */}
+        <div className="p-2 pt-0">
           <SidebarMenuButton
             onClick={handleNewChat}
             className="w-full justify-center bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90"
@@ -106,25 +118,17 @@ export function AppSidebar({ user, onLogout, onGoPulse }: AppSidebarProps) {
               </div>
             ) : (
               <SidebarMenu>
-                {conversations?.map((conversation) => (
+                {conversations?.slice(0, 6).map((conversation) => (
                   <SidebarMenuItem key={conversation.id}>
                     <SidebarMenuButton
                       onClick={() => handleConversationClick(conversation.id)}
                       tooltip={conversation.title}
                       className="h-auto py-2 px-2"
                     >
-                      <div className="flex flex-col items-start gap-1 w-full">
-                        <div className="flex items-center gap-2 w-full">
-                          <MessageSquare className="h-3 w-3 flex-shrink-0" />
-                          <span className="text-sm font-medium truncate group-data-[collapsible=icon]:hidden">
-                            {conversation.title}
-                          </span>
-                        </div>
-                        {conversation.last_message && (
-                          <div className="text-xs text-sidebar-foreground/60 truncate w-full group-data-[collapsible=icon]:hidden">
-                            {conversation.last_message}
-                          </div>
-                        )}
+                      <div className="flex flex-col items-start gap-1 w-full min-w-0">
+                        <span className="text-sm font-medium truncate group-data-[collapsible=icon]:hidden w-full">
+                          {conversation.title}
+                        </span>
                         <div className="text-xs text-sidebar-foreground/40 group-data-[collapsible=icon]:hidden">
                           {formatTimestamp(conversation.updated_at)}
                         </div>
@@ -144,19 +148,6 @@ export function AppSidebar({ user, onLogout, onGoPulse }: AppSidebarProps) {
           </div>
         </div>
 
-        <SidebarSeparator />
-
-        {/* Go to Pulse Button */}
-        <div className="p-2">
-          <SidebarMenuButton
-            onClick={onGoPulse}
-            className="w-full justify-start text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-950"
-            tooltip="Go to Pulse"
-          >
-            <BarChart3 className="h-4 w-4" />
-            <span className="group-data-[collapsible=icon]:hidden">Go to Pulse</span>
-          </SidebarMenuButton>
-        </div>
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border">
