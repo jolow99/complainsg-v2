@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 from app.db import get_async_session, Complaint, ComplaintComment, ComplaintVote, User
 from app.users import current_active_user
 import json
+import random
+import uuid
 
 router = APIRouter(prefix="/pulse", tags=["pulse"])
 
@@ -258,7 +260,12 @@ async def get_map_data(
         area_info["categories"][complaint.category] += 1
 
         # Urgency breakdown
-        area_info["urgency_levels"][complaint.urgency] += 1
+        urgency_key = complaint.urgency.lower() if complaint.urgency else "low"
+        if urgency_key in area_info["urgency_levels"]:
+            area_info["urgency_levels"][urgency_key] += 1
+        else:
+            # Fallback for unexpected urgency values
+            area_info["urgency_levels"]["medium"] += 1
 
         # Add individual complaint (limit per area)
         if len(area_info["complaints"]) < 20:
@@ -462,4 +469,117 @@ async def add_comment(
             "content": new_comment.content,
             "created_at": new_comment.created_at.isoformat()
         }
+    }
+
+
+@router.post("/admin/generate-sample-data")
+async def generate_sample_data(
+    count: int = Query(20, le=50),
+    session: AsyncSession = Depends(get_async_session)
+):
+    """Generate sample complaints with Singapore coordinates for demonstration."""
+
+    # Singapore planning areas with approximate coordinates
+    singapore_locations = [
+        {"name": "Downtown Core", "lat": 1.2830, "lng": 103.8513, "region": "Central"},
+        {"name": "Orchard", "lat": 1.3048, "lng": 103.8318, "region": "Central"},
+        {"name": "Bugis", "lat": 1.3006, "lng": 103.8558, "region": "Central"},
+        {"name": "Chinatown", "lat": 1.2827, "lng": 103.8446, "region": "Central"},
+        {"name": "Little India", "lat": 1.3066, "lng": 103.8522, "region": "Central"},
+        {"name": "Marina Bay", "lat": 1.2802, "lng": 103.8517, "region": "Central"},
+        {"name": "Raffles Place", "lat": 1.2841, "lng": 103.8510, "region": "Central"},
+        {"name": "Toa Payoh", "lat": 1.3343, "lng": 103.8564, "region": "Central"},
+        {"name": "Bishan", "lat": 1.3516, "lng": 103.8489, "region": "Central"},
+        {"name": "Ang Mo Kio", "lat": 1.3691, "lng": 103.8454, "region": "North-East"},
+        {"name": "Bedok", "lat": 1.3236, "lng": 103.9273, "region": "East"},
+        {"name": "Tampines", "lat": 1.3496, "lng": 103.9568, "region": "East"},
+        {"name": "Pasir Ris", "lat": 1.3721, "lng": 103.9474, "region": "East"},
+        {"name": "Changi", "lat": 1.3644, "lng": 103.9915, "region": "East"},
+        {"name": "Hougang", "lat": 1.3613, "lng": 103.8860, "region": "North-East"},
+        {"name": "Punggol", "lat": 1.4043, "lng": 103.9021, "region": "North-East"},
+        {"name": "Sengkang", "lat": 1.3868, "lng": 103.8914, "region": "North-East"},
+        {"name": "Serangoon", "lat": 1.3554, "lng": 103.8697, "region": "North-East"},
+        {"name": "Woodlands", "lat": 1.4382, "lng": 103.7890, "region": "North"},
+        {"name": "Yishun", "lat": 1.4304, "lng": 103.8353, "region": "North"},
+        {"name": "Sembawang", "lat": 1.4491, "lng": 103.8185, "region": "North"},
+        {"name": "Admiralty", "lat": 1.4406, "lng": 103.8009, "region": "North"},
+        {"name": "Jurong East", "lat": 1.3329, "lng": 103.7436, "region": "West"},
+        {"name": "Jurong West", "lat": 1.3404, "lng": 103.7090, "region": "West"},
+        {"name": "Choa Chu Kang", "lat": 1.3840, "lng": 103.7470, "region": "West"},
+        {"name": "Bukit Batok", "lat": 1.3587, "lng": 103.7539, "region": "West"},
+        {"name": "Bukit Panjang", "lat": 1.3774, "lng": 103.7718, "region": "West"},
+        {"name": "Clementi", "lat": 1.3162, "lng": 103.7649, "region": "West"},
+        {"name": "Queenstown", "lat": 1.2966, "lng": 103.8060, "region": "Central"},
+        {"name": "Tuas", "lat": 1.2966, "lng": 103.6365, "region": "West"},
+    ]
+
+    categories = ["transport", "housing", "healthcare", "environment", "education", "employment", "security", "general"]
+    urgency_levels = ["low", "medium", "high"]
+
+    sample_complaints = [
+        "Frequent bus delays during peak hours",
+        "Noise pollution from construction work",
+        "Inadequate lighting in void deck",
+        "Damaged playground equipment needs repair",
+        "Inconsistent water pressure in HDB flats",
+        "Traffic congestion at major junction",
+        "Lack of parking spaces in residential area",
+        "Poor maintenance of public toilets",
+        "Insufficient wheelchair accessibility",
+        "Overcrowding in MRT during rush hour",
+        "Stray cats causing hygiene issues",
+        "Poor air quality near industrial area",
+        "Broken streetlights affecting safety",
+        "Inadequate waste management",
+        "Flooding during heavy rain",
+        "Long waiting time at polyclinic",
+        "Noise from late-night activities",
+        "Poor internet connectivity",
+        "Insufficient childcare facilities",
+        "Unsafe pedestrian crossing"
+    ]
+
+    created_complaints = []
+
+    for i in range(count):
+        location = random.choice(singapore_locations)
+
+        # Add some random offset to coordinates for variety
+        lat_offset = random.uniform(-0.005, 0.005)
+        lng_offset = random.uniform(-0.005, 0.005)
+
+        complaint = Complaint(
+            id=str(uuid.uuid4()),
+            title=random.choice(sample_complaints),
+            original_text=f"Sample complaint about {random.choice(sample_complaints).lower()} in {location['name']}",
+            category=random.choice(categories),
+            subcategory="general",
+            urgency=random.choice(urgency_levels),
+            status="open",
+            location_description=f"Near {location['name']} area",
+            planning_area=location['name'],
+            latitude=location['lat'] + lat_offset,
+            longitude=location['lng'] + lng_offset,
+            sentiment_score=random.uniform(-1.0, 1.0),
+            tags=[random.choice(categories), "sample", "demo"],
+            keywords=[random.choice(categories), location['name'].lower()],
+            upvote_count=random.randint(0, 25),
+            comment_count=random.randint(0, 8),
+            view_count=random.randint(5, 100),
+            created_at=datetime.utcnow() - timedelta(days=random.randint(1, 30))
+        )
+
+        session.add(complaint)
+        created_complaints.append({
+            "id": complaint.id,
+            "title": complaint.title,
+            "location": location['name'],
+            "coordinates": [complaint.latitude, complaint.longitude]
+        })
+
+    await session.commit()
+
+    return {
+        "message": f"Generated {count} sample complaints",
+        "complaints": created_complaints
     }

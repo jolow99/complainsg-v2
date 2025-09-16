@@ -1,15 +1,45 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import MarkerClusterGroup from 'react-leaflet-cluster'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+
+// Fix for default markers in React Leaflet
+import icon from 'leaflet/dist/images/marker-icon.png'
+import iconShadow from 'leaflet/dist/images/marker-shadow.png'
+
+let DefaultIcon = L.divIcon({
+  html: '',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  className: 'default-marker'
+})
+
+L.Marker.prototype.options.icon = DefaultIcon
 
 interface Complaint {
   id: string
   title: string
   category: string
+  subcategory?: string
   urgency: string
+  status: string
+  location_description?: string
+  planning_area?: string
+  postal_code?: string
+  latitude?: number
+  longitude?: number
+  sentiment_score?: number
+  tags: string[]
+  keywords: string[]
   upvote_count: number
+  comment_count: number
+  view_count: number
   created_at: string
+  resolved_at?: string
 }
 
 interface MapAreaData {
@@ -21,69 +51,49 @@ interface MapAreaData {
 }
 
 interface Props {
-  complaints: any[]
-  onComplaintSelect: (id: string) => void
+  complaints: Complaint[]
 }
 
-// Singapore Planning Areas with approximate positions for visualization
-const SINGAPORE_AREAS = [
-  // Central Region
-  { name: "Downtown Core", x: 50, y: 45, region: "Central" },
-  { name: "Museum", x: 48, y: 42, region: "Central" },
-  { name: "Newton", x: 45, y: 40, region: "Central" },
-  { name: "Novena", x: 47, y: 38, region: "Central" },
-  { name: "Orchard", x: 46, y: 41, region: "Central" },
-  { name: "Outram", x: 49, y: 47, region: "Central" },
-  { name: "River Valley", x: 47, y: 43, region: "Central" },
-  { name: "Rochor", x: 51, y: 44, region: "Central" },
-  { name: "Singapore River", x: 49, y: 45, region: "Central" },
-  { name: "Tanglin", x: 44, y: 42, region: "Central" },
+// Create custom markers for different urgency levels
+const createMarkerIcon = (urgency: string, category: string) => {
+  const colors = {
+    low: '#10b981', // green-500
+    medium: '#f59e0b', // yellow-500
+    high: '#ef4444' // red-500
+  }
 
-  // North Region
-  { name: "Admiralty", x: 25, y: 15, region: "North" },
-  { name: "Sembawang", x: 35, y: 10, region: "North" },
-  { name: "Woodlands", x: 30, y: 5, region: "North" },
-  { name: "Yishun", x: 40, y: 15, region: "North" },
+  const color = colors[urgency as keyof typeof colors] || colors.medium
 
-  // North-East Region
-  { name: "Ang Mo Kio", x: 50, y: 25, region: "North-East" },
-  { name: "Hougang", x: 60, y: 25, region: "North-East" },
-  { name: "Punggol", x: 70, y: 20, region: "North-East" },
-  { name: "Sengkang", x: 65, y: 22, region: "North-East" },
-  { name: "Serangoon", x: 55, y: 30, region: "North-East" },
+  return L.divIcon({
+    html: `
+      <div style="
+        background-color: ${color};
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 2px solid white;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+      ">
+        ${urgency === 'high' ? '🚨' : urgency === 'medium' ? '⚠️' : '📝'}
+      </div>
+    `,
+    className: 'custom-marker',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10]
+  })
+}
 
-  // East Region
-  { name: "Bedok", x: 75, y: 50, region: "East" },
-  { name: "Changi", x: 85, y: 55, region: "East" },
-  { name: "Changi Bay", x: 90, y: 50, region: "East" },
-  { name: "Pasir Ris", x: 80, y: 30, region: "East" },
-  { name: "Tampines", x: 70, y: 40, region: "East" },
-
-  // West Region
-  { name: "Boon Lay", x: 15, y: 60, region: "West" },
-  { name: "Bukit Batok", x: 25, y: 55, region: "West" },
-  { name: "Bukit Panjang", x: 35, y: 50, region: "West" },
-  { name: "Choa Chu Kang", x: 20, y: 45, region: "West" },
-  { name: "Clementi", x: 30, y: 60, region: "West" },
-  { name: "Jurong East", x: 15, y: 65, region: "West" },
-  { name: "Jurong West", x: 10, y: 70, region: "West" },
-  { name: "Queenstown", x: 40, y: 55, region: "West" },
-  { name: "Tuas", x: 5, y: 80, region: "West" },
-
-  // Central Region (additional)
-  { name: "Bishan", x: 48, y: 35, region: "Central" },
-  { name: "Bukit Merah", x: 45, y: 50, region: "Central" },
-  { name: "Bukit Timah", x: 40, y: 45, region: "Central" },
-  { name: "Geylang", x: 60, y: 45, region: "Central" },
-  { name: "Kallang", x: 55, y: 42, region: "Central" },
-  { name: "Marine Parade", x: 65, y: 52, region: "Central" },
-  { name: "Toa Payoh", x: 52, y: 35, region: "Central" },
-]
-
-export default function SingaporeMap({ complaints, onComplaintSelect }: Props) {
+export default function SingaporeMap({ complaints }: Props) {
   const [mapData, setMapData] = useState<MapAreaData[]>([])
-  const [selectedArea, setSelectedArea] = useState<string | null>(null)
+  const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Singapore center coordinates
+  const singaporeCenter: [number, number] = [1.3521, 103.8198]
 
   useEffect(() => {
     loadMapData()
@@ -103,34 +113,33 @@ export default function SingaporeMap({ complaints, onComplaintSelect }: Props) {
     }
   }
 
-  const getAreaData = (areaName: string) => {
-    return mapData.find(area => area.planning_area === areaName)
+  // Filter complaints that have valid coordinates
+  const complaintsWithLocation = complaints.filter(
+    complaint => complaint.latitude && complaint.longitude
+  )
+
+  const getCategoryColor = (category: string) => {
+    const colors: Record<string, string> = {
+      transport: 'bg-blue-100 text-blue-800',
+      housing: 'bg-green-100 text-green-800',
+      healthcare: 'bg-red-100 text-red-800',
+      environment: 'bg-emerald-100 text-emerald-800',
+      education: 'bg-purple-100 text-purple-800',
+      employment: 'bg-orange-100 text-orange-800',
+      security: 'bg-gray-100 text-gray-800',
+      general: 'bg-slate-100 text-slate-800'
+    }
+    return colors[category] || colors.general
   }
 
-  const getAreaIntensity = (areaName: string) => {
-    const data = getAreaData(areaName)
-    if (!data) return 0
-    const maxComplaints = Math.max(...mapData.map(a => a.total_complaints))
-    return maxComplaints === 0 ? 0 : (data.total_complaints / maxComplaints)
+  const getUrgencyColor = (urgency: string) => {
+    const colors: Record<string, string> = {
+      low: 'bg-green-100 text-green-700',
+      medium: 'bg-yellow-100 text-yellow-700',
+      high: 'bg-red-100 text-red-700'
+    }
+    return colors[urgency] || colors.medium
   }
-
-  const getAreaColor = (areaName: string) => {
-    const intensity = getAreaIntensity(areaName)
-    if (intensity === 0) return '#f3f4f6' // gray-100
-    if (intensity < 0.3) return '#fef3c7' // yellow-100
-    if (intensity < 0.7) return '#fed7aa' // orange-200
-    return '#fecaca' // red-200
-  }
-
-  const getAreaBorderColor = (areaName: string) => {
-    const intensity = getAreaIntensity(areaName)
-    if (intensity === 0) return '#d1d5db' // gray-300
-    if (intensity < 0.3) return '#f59e0b' // yellow-500
-    if (intensity < 0.7) return '#ea580c' // orange-600
-    return '#dc2626' // red-600
-  }
-
-  const selectedAreaData = selectedArea ? getAreaData(selectedArea) : null
 
   if (loading) {
     return (
@@ -149,183 +158,250 @@ export default function SingaporeMap({ complaints, onComplaintSelect }: Props) {
         <CardHeader>
           <CardTitle className="flex items-center">
             <span className="mr-2">🗺️</span>
-            Singapore Complaint Heatmap
+            Singapore Complaint Map
           </CardTitle>
           <CardDescription>
-            Interactive map showing complaint distribution across planning areas
+            Interactive map showing real complaint locations across Singapore
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="relative">
-            {/* Map Container */}
-            <div className="relative w-full h-96 bg-blue-50 rounded-lg border overflow-hidden">
-              {/* Simple Singapore outline representation */}
-              <svg
-                viewBox="0 0 100 100"
-                className="w-full h-full"
-                style={{ background: 'linear-gradient(135deg, #e0f7ff 0%, #b3e5fc 100%)' }}
+            {/* Real Singapore Map */}
+            <div className="w-full h-96 rounded-lg border overflow-hidden">
+              <MapContainer
+                center={singaporeCenter}
+                zoom={11}
+                minZoom={10}
+                maxZoom={18}
+                style={{ height: '100%', width: '100%' }}
+                className="z-0"
+                maxBounds={[
+                  [1.1, 103.5], // Southwest coordinates
+                  [1.5, 104.1]  // Northeast coordinates
+                ]}
+                maxBoundsViscosity={1.0}
               >
-                {/* Water areas */}
-                <defs>
-                  <pattern id="water" patternUnits="userSpaceOnUse" width="4" height="4">
-                    <rect width="4" height="4" fill="#e0f7ff"/>
-                    <path d="M 0,0 L 2,2 M 2,0 L 4,2" stroke="#b3e5fc" strokeWidth="0.5"/>
-                  </pattern>
-                </defs>
-
-                {/* Singapore main island outline (simplified) */}
-                <path
-                  d="M 10,50 Q 20,30 40,25 Q 60,20 80,30 Q 90,40 85,60 Q 80,75 60,80 Q 40,85 20,75 Q 10,65 10,50 Z"
-                  fill="none"
-                  stroke="#94a3b8"
-                  strokeWidth="0.5"
-                  strokeDasharray="2,1"
+                {/* Use CartoDB for cleaner map appearance */}
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+                  url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                  subdomains={['a', 'b', 'c', 'd']}
                 />
 
-                {/* Planning areas as circles */}
-                {SINGAPORE_AREAS.map((area) => {
-                  const areaData = getAreaData(area.name)
-                  const radius = areaData ? Math.max(1, Math.sqrt(areaData.total_complaints)) : 1
+                {/* Clustered Markers for Performance */}
+                <MarkerClusterGroup
+                  chunkedLoading
+                  iconCreateFunction={(cluster) => {
+                    const count = cluster.getChildCount()
+                    const markers = cluster.getAllChildMarkers()
 
-                  return (
-                    <g key={area.name}>
-                      <circle
-                        cx={area.x}
-                        cy={area.y}
-                        r={Math.max(2, radius)}
-                        fill={getAreaColor(area.name)}
-                        stroke={getAreaBorderColor(area.name)}
-                        strokeWidth="1"
-                        className="cursor-pointer hover:opacity-80 transition-opacity"
-                        onClick={() => setSelectedArea(area.name)}
-                      />
-                      {areaData && (
-                        <text
-                          x={area.x}
-                          y={area.y + radius + 3}
-                          textAnchor="middle"
-                          className="text-xs fill-gray-600 pointer-events-none"
-                          style={{ fontSize: '2px' }}
-                        >
-                          {areaData.total_complaints}
-                        </text>
-                      )}
-                    </g>
-                  )
-                })}
-              </svg>
+                    // Count urgency levels in cluster
+                    let highCount = 0
+                    let mediumCount = 0
+                    let lowCount = 0
+
+                    markers.forEach((marker: any) => {
+                      const urgency = marker.options.urgency
+                      if (urgency === 'high') highCount++
+                      else if (urgency === 'medium') mediumCount++
+                      else lowCount++
+                    })
+
+                    // Determine cluster color based on highest urgency
+                    let clusterColor = '#10b981' // green
+                    if (highCount > 0) clusterColor = '#ef4444' // red
+                    else if (mediumCount > 0) clusterColor = '#f59e0b' // yellow
+
+                    return L.divIcon({
+                      html: `
+                        <div style="
+                          background-color: ${clusterColor};
+                          color: white;
+                          border-radius: 50%;
+                          width: 40px;
+                          height: 40px;
+                          display: flex;
+                          align-items: center;
+                          justify-content: center;
+                          font-weight: bold;
+                          border: 3px solid white;
+                          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                        ">
+                          ${count}
+                        </div>
+                      `,
+                      className: 'marker-cluster',
+                      iconSize: [40, 40],
+                      iconAnchor: [20, 20]
+                    })
+                  }}
+                >
+                  {/* Plot actual complaints with real coordinates */}
+                  {complaintsWithLocation.map((complaint) => (
+                    <Marker
+                      key={complaint.id}
+                      position={[complaint.latitude!, complaint.longitude!]}
+                      icon={createMarkerIcon(complaint.urgency, complaint.category)}
+                      // Add urgency to marker options for clustering
+                      // @ts-ignore
+                      urgency={complaint.urgency}
+                    >
+                      <Popup>
+                        <div className="min-w-[250px] p-2">
+                          <h3 className="font-medium mb-2 line-clamp-2">{complaint.title}</h3>
+
+                          <div className="flex gap-2 mb-2">
+                            <Badge className={getCategoryColor(complaint.category)} variant="secondary">
+                              {complaint.category}
+                            </Badge>
+                            <Badge className={getUrgencyColor(complaint.urgency)} variant="secondary">
+                              {complaint.urgency}
+                            </Badge>
+                          </div>
+
+                          <div className="space-y-1 text-sm text-gray-600 mb-2">
+                            {complaint.planning_area && (
+                              <p><strong>Area:</strong> {complaint.planning_area}</p>
+                            )}
+                            {complaint.location_description && (
+                              <p><strong>Location:</strong> {complaint.location_description}</p>
+                            )}
+                            <p><strong>Date:</strong> {new Date(complaint.created_at).toLocaleDateString()}</p>
+                          </div>
+
+                          <div className="flex items-center gap-4 text-xs text-gray-500 mb-2">
+                            <span>👍 {complaint.upvote_count}</span>
+                            <span>💬 {complaint.comment_count}</span>
+                            <span>👁️ {complaint.view_count}</span>
+                          </div>
+
+                          {complaint.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mb-2">
+                              {complaint.tags.slice(0, 3).map((tag) => (
+                                <span
+                                  key={tag}
+                                  className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                        </div>
+                      </Popup>
+                    </Marker>
+                  ))}
+                </MarkerClusterGroup>
+              </MapContainer>
             </div>
 
-            {/* Legend */}
-            <div className="mt-4 flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <span className="text-sm font-medium">Complaint Intensity:</span>
-                <div className="flex items-center space-x-2">
-                  <div className="w-4 h-4 bg-gray-100 border border-gray-300 rounded"></div>
-                  <span className="text-xs">None</span>
-                  <div className="w-4 h-4 bg-yellow-100 border border-yellow-500 rounded"></div>
-                  <span className="text-xs">Low</span>
-                  <div className="w-4 h-4 bg-orange-200 border border-orange-600 rounded"></div>
-                  <span className="text-xs">Medium</span>
-                  <div className="w-4 h-4 bg-red-200 border border-red-600 rounded"></div>
-                  <span className="text-xs">High</span>
+            {/* Map Stats and Legend */}
+            <div className="mt-4 space-y-3">
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="flex items-center space-x-4">
+                  <span className="text-sm font-medium">Urgency Levels:</span>
+                  <div className="flex items-center space-x-3">
+                    <div className="flex items-center space-x-1">
+                      <div className="w-4 h-4 bg-green-500 rounded-full"></div>
+                      <span className="text-xs">Low</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <div className="w-4 h-4 bg-yellow-500 rounded-full"></div>
+                      <span className="text-xs">Medium</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <div className="w-4 h-4 bg-red-500 rounded-full"></div>
+                      <span className="text-xs">High</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-600">
+                    <span className="font-medium">{complaintsWithLocation.length}</span> complaints with location data
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedComplaint(null)}
+                  >
+                    Reset View
+                  </Button>
                 </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSelectedArea(null)}
-              >
-                Clear Selection
-              </Button>
+
+              <div className="flex items-center justify-center space-x-6 text-xs text-gray-500 border-t pt-2">
+                <div className="flex items-center space-x-1">
+                  <span>📍</span>
+                  <span>Individual complaints</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <div className="w-4 h-4 bg-gray-400 rounded-full text-white text-xs flex items-center justify-center" style={{fontSize: '8px'}}>5</div>
+                  <span>Clustered complaints (click to zoom)</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <span>🔍</span>
+                  <span>Click markers for details</span>
+                </div>
+              </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Selected Area Details */}
-      {selectedAreaData && (
+      {/* Planning Area Statistics */}
+      {mapData.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center">
-                <span className="mr-2">📍</span>
-                {selectedArea}
-              </div>
-              <Badge variant="secondary">
-                {selectedAreaData.total_complaints} complaints
-              </Badge>
+            <CardTitle className="flex items-center">
+              <span className="mr-2">📊</span>
+              Planning Area Statistics
             </CardTitle>
             <CardDescription>
-              Detailed view of complaints in this area
+              Complaint distribution across Singapore's planning areas
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Category breakdown */}
-            <div>
-              <h4 className="font-medium mb-2">Categories</h4>
-              <div className="flex flex-wrap gap-2">
-                {Object.entries(selectedAreaData.categories).map(([category, count]) => (
-                  <Badge key={category} variant="outline" className="text-xs">
-                    {category}: {count}
-                  </Badge>
-                ))}
-              </div>
-            </div>
+          <CardContent>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-64 overflow-y-auto">
+              {mapData
+                .sort((a, b) => b.total_complaints - a.total_complaints)
+                .slice(0, 12)
+                .map((area) => (
+                <div
+                  key={area.planning_area}
+                  className="p-3 border rounded-lg"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <h4 className="font-medium text-sm">{area.planning_area}</h4>
+                    <Badge variant="secondary" className="text-xs">
+                      {area.total_complaints}
+                    </Badge>
+                  </div>
 
-            {/* Urgency levels */}
-            <div>
-              <h4 className="font-medium mb-2">Urgency Levels</h4>
-              <div className="flex gap-4 text-sm">
-                <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-                  Low: {selectedAreaData.urgency_levels.low}
-                </span>
-                <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                  Medium: {selectedAreaData.urgency_levels.medium}
-                </span>
-                <span className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                  High: {selectedAreaData.urgency_levels.high}
-                </span>
-              </div>
-            </div>
+                  <div className="flex gap-2 text-xs text-gray-600">
+                    <span className="flex items-center gap-1">
+                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                      {area.urgency_levels.low}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                      {area.urgency_levels.medium}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                      {area.urgency_levels.high}
+                    </span>
+                  </div>
 
-            {/* Recent complaints */}
-            <div>
-              <h4 className="font-medium mb-2">Recent Complaints</h4>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {selectedAreaData.complaints.map((complaint) => (
-                  <div
-                    key={complaint.id}
-                    className="p-2 border rounded hover:bg-gray-50 cursor-pointer"
-                    onClick={() => onComplaintSelect(complaint.id)}
-                  >
-                    <div className="flex justify-between items-start">
-                      <h5 className="font-medium text-sm line-clamp-1">{complaint.title}</h5>
-                      <div className="flex gap-1 ml-2">
-                        <Badge
-                          variant="secondary"
-                          className="text-xs"
-                        >
-                          {complaint.category}
-                        </Badge>
-                        <Badge
-                          variant={complaint.urgency === 'high' ? 'destructive' : 'secondary'}
-                          className="text-xs"
-                        >
-                          {complaint.urgency}
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="flex justify-between items-center mt-1 text-xs text-gray-500">
-                      <span>{new Date(complaint.created_at).toLocaleDateString()}</span>
-                      <span>👍 {complaint.upvote_count}</span>
+                  <div className="mt-2">
+                    <div className="text-xs text-gray-500">
+                      Top: {Object.entries(area.categories)
+                        .sort(([,a], [,b]) => b - a)[0]?.[0] || 'N/A'}
                     </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>

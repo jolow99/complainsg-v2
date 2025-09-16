@@ -6,7 +6,6 @@ import { Separator } from "@/components/ui/separator"
 import SingaporeMap from './components/SingaporeMap'
 import ComplaintsList from './components/ComplaintsList'
 import AnalyticsOverview from './components/AnalyticsOverview'
-import ComplaintDetail from './components/ComplaintDetail'
 
 interface Complaint {
   id: string
@@ -42,7 +41,6 @@ interface AnalyticsData {
 export default function PulseDashboard() {
   const [complaints, setComplaints] = useState<Complaint[]>([])
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
-  const [selectedComplaint, setSelectedComplaint] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'overview' | 'map' | 'complaints'>('overview')
 
@@ -179,8 +177,7 @@ export default function PulseDashboard() {
                     {complaints.slice(0, 10).map((complaint) => (
                       <div
                         key={complaint.id}
-                        className="p-3 rounded-lg border bg-white/50 hover:bg-white/80 cursor-pointer transition-colors"
-                        onClick={() => setSelectedComplaint(complaint.id)}
+                        className="p-3 rounded-lg border bg-white/50"
                       >
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex-1">
@@ -279,7 +276,6 @@ export default function PulseDashboard() {
         {activeTab === 'map' && (
           <SingaporeMap
             complaints={complaints}
-            onComplaintSelect={setSelectedComplaint}
           />
         )}
 
@@ -287,20 +283,12 @@ export default function PulseDashboard() {
         {activeTab === 'complaints' && (
           <ComplaintsList
             complaints={complaints}
-            onComplaintSelect={setSelectedComplaint}
             getCategoryColor={getCategoryColor}
             getUrgencyColor={getUrgencyColor}
           />
         )}
       </div>
 
-      {/* Complaint Detail Modal */}
-      {selectedComplaint && (
-        <ComplaintDetail
-          complaintId={selectedComplaint}
-          onClose={() => setSelectedComplaint(null)}
-        />
-      )}
     </div>
   )
 }

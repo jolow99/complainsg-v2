@@ -26,14 +26,12 @@ interface Complaint {
 
 interface Props {
   complaints: Complaint[]
-  onComplaintSelect: (id: string) => void
   getCategoryColor: (category: string) => string
   getUrgencyColor: (urgency: string) => string
 }
 
 export default function ComplaintsList({
   complaints,
-  onComplaintSelect,
   getCategoryColor,
   getUrgencyColor
 }: Props) {
@@ -168,8 +166,7 @@ export default function ComplaintsList({
         {sortedComplaints.map((complaint) => (
           <Card
             key={complaint.id}
-            className="hover:shadow-md transition-shadow cursor-pointer"
-            onClick={() => onComplaintSelect(complaint.id)}
+            className="hover:shadow-md transition-shadow"
           >
             <CardContent className="p-6">
               <div className="flex items-start justify-between mb-3">
