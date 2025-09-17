@@ -1,15 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import MarkerClusterGroup from 'react-leaflet-cluster'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
 // Fix for default markers in React Leaflet
-import icon from 'leaflet/dist/images/marker-icon.png'
-import iconShadow from 'leaflet/dist/images/marker-shadow.png'
 
 let DefaultIcon = L.divIcon({
   html: '',
@@ -55,7 +53,7 @@ interface Props {
 }
 
 // Create custom markers for different urgency levels
-const createMarkerIcon = (urgency: string, category: string) => {
+const createMarkerIcon = (urgency: string) => {
   const colors = {
     low: '#10b981', // green-500
     medium: '#f59e0b', // yellow-500
@@ -89,7 +87,6 @@ const createMarkerIcon = (urgency: string, category: string) => {
 
 export default function SingaporeMap({ complaints }: Props) {
   const [mapData, setMapData] = useState<MapAreaData[]>([])
-  const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null)
   const [loading, setLoading] = useState(true)
 
   // Singapore center coordinates
@@ -191,7 +188,7 @@ export default function SingaporeMap({ complaints }: Props) {
                 {/* Clustered Markers for Performance */}
                 <MarkerClusterGroup
                   chunkedLoading
-                  iconCreateFunction={(cluster) => {
+                  iconCreateFunction={(cluster: any) => {
                     const count = cluster.getChildCount()
                     const markers = cluster.getAllChildMarkers()
 
@@ -241,7 +238,7 @@ export default function SingaporeMap({ complaints }: Props) {
                     <Marker
                       key={complaint.id}
                       position={[complaint.latitude!, complaint.longitude!]}
-                      icon={createMarkerIcon(complaint.urgency, complaint.category)}
+                      icon={createMarkerIcon(complaint.urgency)}
                       // Add urgency to marker options for clustering
                       // @ts-ignore
                       urgency={complaint.urgency}
@@ -324,7 +321,7 @@ export default function SingaporeMap({ complaints }: Props) {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setSelectedComplaint(null)}
+                    onClick={() => window.location.reload()}
                   >
                     Reset View
                   </Button>

@@ -1,4 +1,4 @@
-import { LogOut, BarChart3, User, Plus, MessageSquare, Settings } from "lucide-react"
+import { LogOut, BarChart3, User, Plus, Settings } from "lucide-react"
 import { useNavigate } from "@tanstack/react-router"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { useConversations } from "@/hooks/useConversations"
