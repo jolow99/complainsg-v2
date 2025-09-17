@@ -56,8 +56,9 @@ services:
     container_name: complainsg-frontend
     # Production: Uncomment the restart policy below
     # restart: unless-stopped
-    ports:
-      - "${FRONTEND_PORT}:3000"
+    # Remove external port mapping - nginx will handle this
+    # ports:
+    #   - "${FRONTEND_PORT}:3000"
     # Development: Volume mounts for hot reload
     volumes:
       - ./frontend:/app
@@ -72,6 +73,32 @@ services:
     command: ["sh", "-c", "pnpm install && pnpm run dev --host 0.0.0.0 --port 3000"]
     # Production: Build and serve production build
     # command: ["sh", "-c", "pnpm install && pnpm run build && pnpm run preview --host 0.0.0.0 --port 3000"]
+
+  nginx:
+    image: nginx:alpine
+    container_name: complainsg-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - frontend
+      - backend
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+
+  certbot:
+    image: certbot/certbot
+    container_name: complainsg-certbot
+    restart: unless-stopped
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
 volumes:
   postgres_data:
