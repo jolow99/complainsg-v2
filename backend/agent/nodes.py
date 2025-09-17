@@ -3,6 +3,7 @@ from pocketflow import AsyncNode
 from .utils.call_llm_async import call_llm_async
 from .utils.stream_llm_async import stream_llm_async
 from .utils.save_complaint import save_complaint
+from .utils.singapore_resources import get_singapore_resources
 import json
 import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +14,7 @@ from uuid import UUID
 import uuid
 
 # If the complaint quality is at or below this threshold, it will try to attempt to ask more questions
-complaint_threshold = 4
+complaint_threshold = 2
 
 class HTTPDataExtractionNodeAsync(AsyncNode):
     async def prep_async(self, shared):
@@ -44,10 +45,15 @@ class HTTPDataExtractionNodeAsync(AsyncNode):
         # Check if any required metadata is missing (and if the complaint quality is below threshold)
         missing_fields = []
         for key, value in inputs.items():
-            if key in ['complaint_topic', 'complaint_location', 'complaint_summary', 'complaint_quality']:
+            if key in ['complaint_topic', 'complaint_location', 'complaint_summary']:
                 if not value:
                     missing_fields.append(key)
-                if key == 'complaint_quality' and value < complaint_threshold:
+            if key == 'complaint_quality':
+                try:
+                    quality_val = int(value) if value else 0
+                    if quality_val <= complaint_threshold:
+                        missing_fields.append(key)
+                except (ValueError, TypeError):
                     missing_fields.append(key)
 
         # If no missing fields, this has been summarized before
@@ -84,41 +90,50 @@ class HTTPDataExtractionNodeAsync(AsyncNode):
             prompt = f"""
             Conversation history: {inputs['conversation_history']}
 
-            The data I need: {', '.join(missing_fields)}
+            IMPORTANT: Only extract information that is clearly present in the conversation. Do NOT make up or hallucinate information that isn't there.
 
-            Extract the following information from the conversation and return it as valid JSON:
+            If the user hasn't provided enough information about a complaint, leave those fields as null.
+
+            Extract the following information and return it as valid JSON:
 
             Examples:
-            - complaint_topics: "Treatment of construction workers", "Construction noise", "Noise from birds"
-            - complaint_locations: "Joo Chiat", "Boon Lay", "Bishan"
-            - complaint_summary: "Citizen thinks that construction works are not treated fairly. He/She thinks that workers are not paid fairly and are not given enough breaks. He/She thinks that the construction site is not safe and that there are no safety measures in place. Citizen wants to know if the government is doing anything to improve the situation."
-            - complaint_quality: 3
+            - complaint_topics: "Construction noise", "Transport delays", "Housing issues"
+            - complaint_locations: "Joo Chiat", "Boon Lay", "Bishan", "Central Singapore", "East Coast"
+            - complaint_summary: "Citizen complains about excessive construction noise in their neighborhood during early morning hours, affecting sleep and daily life. They want authorities to enforce noise regulations."
+            - complaint_quality: 4
 
-            For complaint_topic, try and match the topic to one of the following categories if possible: {categories_string}
-            If you cant find a match, just make up a topic.
+            For complaint_topic:
+            - Only extract if there's a clear complaint or issue mentioned
+            - Try to match to these categories: {categories_string}
+            - If no complaint is evident, set to null
 
-            For the complaint_quality: Give a number based on the productivity and actionability of the complaint. Consider:
-                - Is the issue specific and actionable by government?
-                - Is there sufficient detail for policymakers to understand?
-                - Does it describe community impact or broader implications?
-                - Is the concern constructive rather than just emotional venting?
-            Follow this scale:
-                1 = Not productive (vague, personal, or outside government scope)
-                2 = Minimal productivity (lacks detail or context)
-                3 = Somewhat productive (has potential but needs more information)
-                4 = Productive (clear, actionable, policy-relevant)
-                5 = Very productive (specific, impactful, well-detailed)
+            For complaint_location:
+            - Only extract if a specific location is mentioned in the conversation
+            - Extract specific Singapore neighborhoods, districts, or planning areas (e.g., "Toa Payoh", "Jurong West", "Bedok", "Tampines", "Bishan")
+            - Look for MRT station names and map them to neighborhoods (e.g., "Dhoby Ghaut MRT" = "City Hall", "Jurong East MRT" = "Jurong East")
+            - If no location is mentioned, set to null
 
+            For complaint_summary:
+            - Only write a summary if there's a clear complaint described
+            - Write 1-3 sentences summarizing the key issue and what the citizen wants
+            - If no clear complaint is present, set to null
+
+            For complaint_quality: Rate 1-5 based on:
+                - Specificity and actionability by government
+                - Detail level for policymakers
+                - Community impact described
+                - Constructive vs emotional content
+            Scale: 1=vague/personal, 2=minimal detail, 3=somewhat productive, 4=clear/actionable, 5=very detailed/impactful
 
             Return ONLY valid JSON in this format:
             {{
-                "complaint_topic": "extracted topic or null",
-                "complaint_location": "extracted location or null",
-                "complaint_summary": "extracted summary or null",
-                "complaint_quality": "extracted quality or null"
+                "complaint_topic": "specific topic or null",
+                "complaint_location": "specific location or null",
+                "complaint_summary": "detailed summary or null",
+                "complaint_quality": 1
             }}
 
-            If you cannot extract a field, set it to null.
+            CRITICAL: Use null for any field where information is not clearly present in the conversation. Do not make up information.
             """
 
             response = await call_llm_async(prompt)
@@ -140,6 +155,12 @@ class HTTPDataExtractionNodeAsync(AsyncNode):
                 # Update inputs with extracted data
                 for key, value in result.items():
                     if key in inputs and value and value != "null":
+                        # Convert complaint_quality to int to fix TypeError
+                        if key == "complaint_quality":
+                            try:
+                                value = int(value)
+                            except (ValueError, TypeError):
+                                value = 0
                         inputs[key] = value
                         print(f"🔍 DATA EXTRACTION NODE: Updated {key} = {value}")
 
@@ -186,10 +207,17 @@ class HTTPDataExtractionNodeAsync(AsyncNode):
             return "reject"
 
         print(f"🔍 DATA EXTRACTION NODE: task_metadata = {shared['task_metadata']}")
+        # Ensure complaint_quality is an integer for comparison
+        complaint_quality = exec_res.get("complaint_quality", 0)
+        try:
+            complaint_quality = int(complaint_quality)
+        except (ValueError, TypeError):
+            complaint_quality = 0
+
         if (exec_res.get("complaint_topic") and
             exec_res.get("complaint_location") and
             exec_res.get("complaint_summary") and
-            exec_res.get("complaint_quality", 0) > complaint_threshold):
+            complaint_quality > complaint_threshold):
             print("🔍 DATA EXTRACTION NODE: All fields complete - returning 'summarize'")
             return "summarize"
         else:
@@ -217,16 +245,16 @@ class HTTPGenerateNodeAsync(AsyncNode):
         missing_fields = [key for key, value in inputs.items() if key in ['complaint_topic', 'complaint_location', 'complaint_summary'] and not value]
 
         prompt = f"""
-            You are a helpful assistant that is trying to understand a citizen complaint by asking a single question
+            You are a helpful assistant handling citizen complaints. Your job is to briefly acknowledge the complaint and ask ONE final clarifying question if absolutely necessary.
 
             Past conversation history: {inputs['conversation_history']}
 
             Missing Data: {', '.join(missing_fields)}
             Complaint Quality: {inputs.get("complaint_quality", 0)}
 
-            If the complaint quality is 3 or below, you want the user to provide more information. The question should probe the user to provide more information and details to improve the clarity of the complaint.
+            If we have basic complaint information (topic, location, summary), thank the citizen and let them know their complaint will be processed. Only ask ONE more question if critical information is completely missing.
 
-            Suggest the next clarifying question to better understand the complaint and to get the data I want. Only output the question.
+            Be concise and helpful. If you ask a question, make it short and specific. Prioritize moving forward with complaint processing rather than gathering perfect information.
             """
         full_response = ""
         async for chunk in stream_llm_async([{"role": "user", "content": prompt}]):
@@ -282,9 +310,19 @@ class HTTPSummarizerNodeAsync(AsyncNode):
         if queue:
             await queue.put("✅ Complaint saved successfully!\n\n")
 
+        # Get relevant Singapore resources based on complaint category
+        complaint_category = self._map_category(task_metadata.get("complaint_topic", ""))
+        relevant_resources = get_singapore_resources(complaint_category)
+
         # Generate summary response
+        resources_text = ""
+        if relevant_resources:
+            resources_text = "\\n\\nFor direct assistance or to follow up on this matter, you can also contact:\\n"
+            for resource in relevant_resources[:2]:  # Show top 2 most relevant resources
+                resources_text += f"• {resource['name']}: {resource['contact']} ({resource['description']})\\n"
+
         prompt = f"""
-            You are summarizing a citizen complaint conversation for processing by a government agency.
+            You are summarizing a citizen complaint conversation and providing closure.
 
             Conversation history:
             {conversation_history}
@@ -294,8 +332,16 @@ class HTTPSummarizerNodeAsync(AsyncNode):
             Location: {task_metadata.get("complaint_location", "")}
             Quality: {task_metadata.get("complaint_quality", 0)}
 
-            Write a short, clear summary of the complaint as a single paragraph. Start the paragraph with: Your complaint has been logged!
-            Include the complaint ID: {complaint_id}
+            Write a response that:
+            1. Confirms their complaint has been logged with ID: {complaint_id}
+            2. Briefly summarizes what they reported
+            3. Explains that this helps bring community issues to light
+            4. Includes relevant Singapore government contacts for direct follow-up if they want immediate action
+
+            Relevant government resources for this complaint type:
+            {resources_text}
+
+            Keep the response professional, helpful, and reassuring. Thank them for bringing this to the community's attention.
             """
 
         full_response = ""

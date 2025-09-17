@@ -23,8 +23,8 @@ async def stream_llm_async(messages: List[Dict[str, str]]) -> AsyncGenerator[str
     response = await client.chat.completions.create(
         model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
         messages=messages,
-        max_tokens=2000,
-        temperature=0.7,
+        # max_tokens=2000,
+        # temperature=0.7,
         stream=True
     )
 

@@ -56,7 +56,9 @@ async def save_complaint(complaint_data: Dict, user_id: Optional[str] = None) ->
     complaint_id = str(uuid.uuid4())
 
     # Create complaint object
-    async with get_async_session() as session:
+    session = get_async_session()
+    session_obj = await session.__anext__()
+    try:
         complaint = Complaint(
             id=complaint_id,
             user_id=user_id,
@@ -98,8 +100,8 @@ async def save_complaint(complaint_data: Dict, user_id: Optional[str] = None) ->
             view_count=0
         )
 
-        session.add(complaint)
-        await session.commit()
+        session_obj.add(complaint)
+        await session_obj.commit()
 
         print(f"Saved complaint {complaint_id} to database")
         print(f"Title: {title}")
@@ -107,6 +109,8 @@ async def save_complaint(complaint_data: Dict, user_id: Optional[str] = None) ->
         print(f"Location: {location_description}")
 
         return complaint_id
+    finally:
+        await session_obj.close()
 
 # Sync version for backward compatibility (for testing)
 def save_complaint_sync(complaint_data: Dict) -> str:

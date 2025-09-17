@@ -28,8 +28,8 @@ async def call_llm_async(prompt_or_messages) -> str:
     response = await client.chat.completions.create(
         model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
         messages=messages,
-        max_tokens=1500,
-        temperature=0.7
+        # max_tokens=1500,
+        # temperature=0.7
     )
 
     return response.choices[0].message.content
