@@ -2,16 +2,21 @@ import os
 from openai import AsyncOpenAI
 from typing import List, Dict
 
-async def call_llm_async(messages: List[Dict[str, str]]) -> str:
+async def call_llm_async(prompt_or_messages) -> str:
     """
-    Async LLM call with messages and return response text.
+    Async LLM call with prompt string or messages list and return response text.
 
     Args:
-        messages: List of message dicts with 'role' and 'content' keys
+        prompt_or_messages: Either a string prompt or list of message dicts with 'role' and 'content' keys
 
     Returns:
         str: LLM response text
     """
+    # Handle both string prompts and message lists for compatibility
+    if isinstance(prompt_or_messages, str):
+        messages = [{"role": "user", "content": prompt_or_messages}]
+    else:
+        messages = prompt_or_messages
     client = AsyncOpenAI(
         api_key=os.getenv("OPENAI_API_KEY"),
         base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),

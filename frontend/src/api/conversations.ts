@@ -96,38 +96,56 @@ export async function sendChatMessage(request: ChatRequest): Promise<ChatRespons
   return response.json()
 }
 
-// Streaming complaint function - handles new complaint processing endpoints
+// Streaming complaint function - updated for new backend pattern
 export async function streamChatMessage(
-  request: StreamingChatRequest,
+  request: StreamingChatRequest & { conversationHistory?: Array<{role: string, content: string}>, threadMetadata?: any },
   onChunk: (content: string) => void,
-  onComplete: (fullResponse: string, conversationId?: string) => void,
+  onComplete: (fullResponse: string, conversationId?: string, metadata?: any) => void,
   onError: (error: string) => void
 ): Promise<void> {
   try {
-    // Step 1: Create complaint task
-    const taskResponse = await fetch(`${API_BASE_URL}/api/complaint`, {
+    // Build conversation history from previous messages
+    const messages: Array<{role: string, content: string}> = []
+
+    // Add previous conversation history if available
+    if (request.conversationHistory && request.conversationHistory.length > 0) {
+      messages.push(...request.conversationHistory)
+    }
+
+    // Add the current message as user message
+    messages.push({
+      role: "user",
+      content: request.message
+    })
+
+    // Step 1: Create chat task using new backend pattern
+    const taskResponse = await fetch(`${API_BASE_URL}/api/chat`, {
       method: 'POST',
       headers: await getAuthHeaders(),
       body: JSON.stringify({
-        message: request.message,
-        user_answers: [], // Can be extended later for multi-turn conversations
-        user_contact: null // Can be extended later for user contact info
+        messages: messages,
+        threadMetaData: request.threadMetadata || {
+          topic: "", // Will be extracted by backend
+          summary: "",
+          location: "",
+          quality: 0
+        }
       })
     })
 
     if (!taskResponse.ok) {
-      throw new Error(`Failed to create complaint task: ${taskResponse.status}`)
+      throw new Error(`Failed to create chat task: ${taskResponse.status}`)
     }
 
     const { task_id } = await taskResponse.json()
 
     // Step 2: Stream the results using Server-Sent Events
-    const streamResponse = await fetch(`${API_BASE_URL}/api/complaint/stream/${task_id}`, {
+    const streamResponse = await fetch(`${API_BASE_URL}/api/chat/stream/${task_id}`, {
       headers: await getAuthHeaders()
     })
 
     if (!streamResponse.ok) {
-      throw new Error(`Failed to stream complaint processing: ${streamResponse.status}`)
+      throw new Error(`Failed to stream chat processing: ${streamResponse.status}`)
     }
 
     const reader = streamResponse.body?.getReader()
@@ -137,6 +155,7 @@ export async function streamChatMessage(
 
     const decoder = new TextDecoder()
     let fullResponse = ''
+    let threadMetadata = null
 
     while (true) {
       const { done, value } = await reader.read()
@@ -152,8 +171,14 @@ export async function streamChatMessage(
 
             if (data.done) {
               // Streaming complete
-              onComplete(fullResponse, request.conversation_id?.toString())
+              onComplete(fullResponse, request.conversation_id?.toString(), threadMetadata)
               return
+            }
+
+            if (data.type === 'metadata') {
+              // Store metadata for later use
+              threadMetadata = data.threadMetaData
+              continue
             }
 
             if (data.content) {
@@ -169,7 +194,7 @@ export async function streamChatMessage(
     }
 
     // If we get here without seeing done:true, still complete
-    onComplete(fullResponse, request.conversation_id?.toString())
+    onComplete(fullResponse, request.conversation_id?.toString(), threadMetadata)
 
   } catch (error) {
     onError((error as Error).message)

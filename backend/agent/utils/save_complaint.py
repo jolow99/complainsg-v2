@@ -7,10 +7,10 @@ from .get_embedding import get_embedding
 
 async def save_complaint(complaint_data: Dict, user_id: Optional[str] = None) -> str:
     """
-    Save complaint data to database with structured extraction.
+    Save complaint data to database following reference pattern.
 
     Args:
-        complaint_data: Dictionary containing complaint information
+        complaint_data: Dictionary containing complaint information (new format)
         user_id: Optional user ID for authenticated users
 
     Returns:
@@ -20,12 +20,29 @@ async def save_complaint(complaint_data: Dict, user_id: Optional[str] = None) ->
     from app.db import get_async_session, Complaint
     from sqlalchemy import select
 
-    # Extract original complaint and history
-    original_text = complaint_data["complaint"]["original_text"]
-    conversation_history = complaint_data.get("conversation_history", [])
-
-    # Use LLM to extract structured data
-    structured_data = extract_structured_data(original_text, conversation_history)
+    # Handle both old and new data formats
+    if "complaint" in complaint_data:
+        # Old format for backward compatibility
+        original_text = complaint_data["complaint"]["original_text"]
+        conversation_history = complaint_data.get("conversation_history", [])
+        title = complaint_data["complaint"].get("title", "Complaint")[:100]
+        category = complaint_data["complaint"].get("category", "general")
+        urgency = complaint_data["complaint"].get("urgency", "medium")
+        location_description = complaint_data["complaint"].get("location", "")
+        tags = complaint_data["complaint"].get("tags", [])
+        keywords = complaint_data["complaint"].get("keywords", [])
+        sentiment_score = complaint_data["complaint"].get("sentiment_score", 0.0)
+    else:
+        # New format from reference pattern
+        original_text = complaint_data.get("original_text", "")
+        conversation_history = complaint_data.get("conversation_history", [])
+        title = complaint_data.get("title", "Complaint")[:100]
+        category = complaint_data.get("category", "general")
+        urgency = complaint_data.get("urgency", "medium")
+        location_description = complaint_data.get("location_description", "")
+        tags = complaint_data.get("tags", [])
+        keywords = complaint_data.get("keywords", [])
+        sentiment_score = complaint_data.get("sentiment_score", 0.0)
 
     # Generate embedding for similarity search (if available)
     embedding_vector = None
@@ -48,38 +65,46 @@ async def save_complaint(complaint_data: Dict, user_id: Optional[str] = None) ->
             original_text=original_text,
             conversation_history=conversation_history,
 
-            # Structured data from LLM
-            title=structured_data["title"],
-            category=structured_data["category"],
-            subcategory=structured_data.get("subcategory"),
-            urgency=structured_data["urgency"],
+            # Basic data
+            title=title,
+            category=category,
+            subcategory=complaint_data.get("subcategory", "general"),
+            urgency=urgency,
+            status=complaint_data.get("status", "open"),
 
             # Location data
-            location_description=structured_data.get("location", {}).get("description"),
-            postal_code=structured_data.get("location", {}).get("postal_code"),
-            planning_area=structured_data.get("location", {}).get("planning_area"),
+            location_description=location_description,
+            planning_area=complaint_data.get("planning_area", location_description),
+            postal_code=complaint_data.get("postal_code"),
+            latitude=complaint_data.get("latitude"),
+            longitude=complaint_data.get("longitude"),
 
             # Timing and impact
-            frequency=structured_data.get("timing", {}).get("frequency"),
-            time_of_occurrence=structured_data.get("timing", {}).get("time_of_occurrence"),
-            affected_count=structured_data.get("impact", {}).get("affected_count"),
+            frequency=complaint_data.get("frequency"),
+            time_of_occurrence=complaint_data.get("time_of_occurrence"),
+            affected_count=complaint_data.get("affected_count"),
 
             # AI analysis
-            sentiment_score=structured_data["sentiment"],
-            tags=structured_data["tags"],
-            keywords=structured_data["keywords"],
+            sentiment_score=sentiment_score,
+            tags=tags,
+            keywords=keywords,
 
             # Vector embedding
-            embedding=embedding_vector
+            embedding=embedding_vector,
+
+            # Default counts
+            upvote_count=0,
+            comment_count=0,
+            view_count=0
         )
 
         session.add(complaint)
         await session.commit()
 
         print(f"Saved complaint {complaint_id} to database")
-        print(f"Title: {structured_data['title']}")
-        print(f"Category: {structured_data['category']}")
-        print(f"Location: {structured_data.get('location', {}).get('planning_area', 'Not specified')}")
+        print(f"Title: {title}")
+        print(f"Category: {category}")
+        print(f"Location: {location_description}")
 
         return complaint_id
 

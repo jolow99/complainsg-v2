@@ -81,7 +81,7 @@ app.include_router(
 app.include_router(pulse_router)
 
 # Async flow runner
-async def run_complaint_flow(shared_store: dict):
+async def run_flow(shared_store: dict):
     """Run the complaint processing flow asynchronously."""
     from agent.flow import create_complaint_flow
     flow = create_complaint_flow()
@@ -184,80 +184,112 @@ async def delete_conversation_endpoint(
 
 
 # New complaint processing endpoints following the reference pattern
-@app.post("/api/complaint")
-async def create_complaint_task(
-    request: ComplaintRequest,
-    background_tasks: BackgroundTasks,
-    user: User = Depends(current_active_user)
-):
-    """Create a new complaint processing task."""
+@app.post("/api/chat")
+async def chat_endpoint(request: Request, background_tasks: BackgroundTasks):
+    """Create a new complaint processing task following reference pattern."""
+    data = await request.json()
+
     # Task ID for client reference
-    task_id = f"complaint_{uuid.uuid4().hex[:8]}"
+    task_id = f"task_{uuid.uuid4().hex[:8]}"
 
     # Use lock to prevent race conditions
     async with task_creation_lock:
         # Check if task queue exists, if not create it
         if task_id not in task_queues:
+            print(f"Task {task_id} queue not found, creating it...")
             message_queue = asyncio.Queue()
             task_queues[task_id] = message_queue
+            print(f"✅ Created new queue for task {task_id}")
         else:
-            raise HTTPException(status_code=400, detail=f"Task {task_id} already exists")
+            raise Exception(f"Task {task_id} already exists")
 
-    # Define shared store parameters
-    from agent.flow import create_shared_store
-    shared_store = create_shared_store(
-        request.message,
-        request.user_contact
-    )
+    # Populate dictionary with task metadata from POST
+    print(f"🔍 DATA: {data}")
 
-    # Add user answers if provided
-    if request.user_answers:
-        for i, answer in enumerate(request.user_answers):
-            shared_store["conversation_history"].append({
-                "question": f"Question {i+1}",
-                "answer": answer
-            })
+    task_metadata[task_id] = {
+        "complaint_topic": data.get("threadMetaData", {}).get("topic", ""),
+        "complaint_summary": data.get("threadMetaData", {}).get("summary", ""),
+        "complaint_location": data.get("threadMetaData", {}).get("location", ""),
+        "complaint_quality": data.get("threadMetaData", {}).get("quality", 0),
+    }
 
-    # Add task-specific parameters
-    shared_store.update({
+    # Define all shared parameters here and kick off the flow
+    shared_store = {
+        "conversation_history": data.get("messages", []),
+        # Reference to queue for streaming response (for that id)
         "message_queue": message_queue,
         "task_id": task_id,
-        "user_id": str(user.id)
-    })
+        "status": "continue",
+        # Reference to dictionary (for that id)
+        "task_metadata": task_metadata[task_id],
+    }
 
-    # Start background flow
-    background_tasks.add_task(run_complaint_flow, shared_store)
+    print(f"🚀 Starting background flow for task {task_id}")
+    background_tasks.add_task(run_flow, shared_store)
     return {"task_id": task_id}
 
 
-@app.get("/api/complaint/stream/{task_id}")
-async def stream_complaint_processing(task_id: str):
-    """Stream complaint processing results."""
+# SSE endpoint to receive streaming response from the queue for a specific task
+@app.get("/api/chat/stream/{task_id}")
+async def stream_endpoint(task_id: str):
+    """
+    This endpoint returns the streaming response from the queue for a specific task.
+    If the task doesn't exist, it creates the task ID and queue but doesn't run the flow.
+    """
+    print(f"📥 GET /api/chat/stream/{task_id} - Current tasks: {list(task_queues.keys())}")
 
     # Use lock to prevent race conditions
     async with task_creation_lock:
         # If task doesn't exist, create the queue only (no flow execution)
         if task_id not in task_queues:
+            print(f"Task {task_id} not found, creating queue...")
             message_queue = asyncio.Queue()
             task_queues[task_id] = message_queue
+            print(f"✅ Queue created for task {task_id}")
         else:
-            message_queue = task_queues[task_id]
+            print(f"✅ Task {task_id} already exists")
+        if task_id not in task_metadata:
+            print(f"Task {task_id} not found, creating metadata...")
+            task_metadata[task_id] = {
+                "complaint_topic": "",
+                "complaint_quality": 0,
+                "complaint_summary": "",
+                "complaint_location": ""
+            }
+            print(f"✅ Metadata created for task {task_id}")
 
     async def stream_generator():
+        queue = task_queues[task_id]
+        print(f"🔄 Starting stream for task {task_id}")
         try:
             while True:
-                message = await message_queue.get()
-                # If message is None, stream is done
+                message = await queue.get()
+                # If message is done, queue will have None at the end
                 if message is None:
-                    # Signal end of stream
+                    print(f"🏁 End of stream for task {task_id}")
+
+                    # Metadata is generated before stream, but only retrieve after stream is done to prevent race condition
+                    stored_metadata = task_metadata.get(task_id, {})
+                    metadata = {
+                        "type": "metadata",
+                        "threadMetaData": stored_metadata
+                    }
+
+                    print(f"🔍 Sending metadata: {metadata}")
+                    yield f"data: {json.dumps(metadata)}\n\n"
+                    # Sentinel to indicate the end of the stream
                     yield f"data: {json.dumps({'done': True})}\n\n"
                     break
                 yield f"data: {json.dumps({'content': message})}\n\n"
-                message_queue.task_done()
+                queue.task_done()
         finally:
-            # Clean up the queue
+            # Clean up the queue and metadata
             if task_id in task_queues:
+                print(f"🧹 Cleaning up task {task_id}")
                 del task_queues[task_id]
+            if task_id in task_metadata:
+                print(f"🧹 Cleaning up metadata for task {task_id}")
+                del task_metadata[task_id]
 
     return StreamingResponse(stream_generator(), media_type="text/event-stream")
 

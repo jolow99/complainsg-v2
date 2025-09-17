@@ -13,6 +13,14 @@ export function useChatWithConversations(conversationId?: string) {
   const [streamingMessage, setStreamingMessage] = useState<string>('')
   const [isStreaming, setIsStreaming] = useState(false)
 
+  // Thread metadata for the backend pattern
+  const [threadMetadata, setThreadMetadata] = useState<any>({
+    topic: "",
+    summary: "",
+    location: "",
+    quality: 0
+  })
+
   // Load existing conversation if conversationId is provided
   const { data: conversation, isLoading: loadingConversation } = useConversation(conversationId)
 
@@ -56,21 +64,45 @@ export function useChatWithConversations(conversationId?: string) {
       const userMessage: ChatMessage = { user: message, assistant: '' }
       setConversationHistory(prev => [...prev, userMessage])
 
+      // Build conversation history for backend (convert from ChatMessage format)
+      const backendConversationHistory: Array<{role: string, content: string}> = []
+
+      // Add all previous messages in the backend format
+      conversationHistory.forEach((msg) => {
+        backendConversationHistory.push({
+          role: "user",
+          content: msg.user
+        })
+        if (msg.assistant) {
+          backendConversationHistory.push({
+            role: "assistant",
+            content: msg.assistant
+          })
+        }
+      })
+
       return new Promise((resolve, reject) => {
         streamChatMessage(
           {
             message,
-            conversation_id: currentConversationId
+            conversation_id: currentConversationId,
+            conversationHistory: backendConversationHistory,
+            threadMetadata: threadMetadata
           },
           // onChunk - update streaming message
           (content: string) => {
             setStreamingMessage(prev => prev + content)
           },
           // onComplete - finalize and save
-          async (fullResponse: string) => {
+          async (fullResponse: string, _conversationId?: string, metadata?: any) => {
             try {
               setIsStreaming(false)
               setStreamingMessage('')
+
+              // Update thread metadata if received
+              if (metadata) {
+                setThreadMetadata(metadata)
+              }
 
               // Update the last message with the complete response
               setConversationHistory(prev => {
@@ -94,7 +126,8 @@ export function useChatWithConversations(conversationId?: string) {
               resolve({
                 response: fullResponse,
                 conversation_id: saveResult.conversation_id,
-                conversation_history: [...conversationHistory, { user: message, assistant: fullResponse }]
+                conversation_history: [...conversationHistory, { user: message, assistant: fullResponse }],
+                metadata: metadata
               })
             } catch (saveError) {
               console.error('Error saving message:', saveError)
@@ -102,7 +135,8 @@ export function useChatWithConversations(conversationId?: string) {
               resolve({
                 response: fullResponse,
                 conversation_id: currentConversationId,
-                conversation_history: [...conversationHistory, { user: message, assistant: fullResponse }]
+                conversation_history: [...conversationHistory, { user: message, assistant: fullResponse }],
+                metadata: metadata
               })
             }
           },
@@ -132,6 +166,12 @@ export function useChatWithConversations(conversationId?: string) {
     setError(null)
     setStreamingMessage('')
     setIsStreaming(false)
+    setThreadMetadata({
+      topic: "",
+      summary: "",
+      location: "",
+      quality: 0
+    })
 
     // Navigate to new chat
     window.history.pushState({}, '', '/chat')
@@ -149,5 +189,7 @@ export function useChatWithConversations(conversationId?: string) {
     // Streaming-specific properties
     streamingMessage,
     isStreaming,
+    // Thread metadata for complaint processing
+    threadMetadata,
   }
 }

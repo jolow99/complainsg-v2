@@ -44,6 +44,13 @@ export interface ChatResponse {
 export interface StreamingChatRequest {
   message: string
   conversation_id?: string
+  conversationHistory?: Array<{role: string, content: string}>
+  threadMetadata?: {
+    topic: string
+    summary: string
+    location: string
+    quality: number
+  }
 }
 
 export interface StreamingChatResponse {

@@ -1,61 +1,48 @@
 from pocketflow import AsyncFlow
 from .nodes import (
-    InitialAssessmentNode,
-    ProbingNode,
-    ComplaintStorageNode
+    HTTPDataExtractionNodeAsync,
+    HTTPGenerateNodeAsync,
+    HTTPSummarizerNodeAsync,
+    HTTPRejectionNodeAsync,
 )
 
 def create_complaint_flow():
-    """Create and return a complaint processing flow focused on thorough probing."""
+    """Create and return a complaint processing flow following reference pattern."""
 
-    # Create nodes
-    assess_node = InitialAssessmentNode()
-    probe_node = ProbingNode()
-    store_node = ComplaintStorageNode()
+    # Create nodes following reference pattern
+    extraction = HTTPDataExtractionNodeAsync()
+    generate = HTTPGenerateNodeAsync()
+    summarizer = HTTPSummarizerNodeAsync()
+    rejection = HTTPRejectionNodeAsync()
 
-    # Connect nodes with actions
-    # From assessment, we can either probe more or save to storage
-    assess_node - "needs_probing" >> probe_node
-    assess_node - "ready_for_storage" >> store_node
+    # Connect nodes with actions matching reference pattern
+    extraction - 'continue' >> generate
+    extraction - 'summarize' >> summarizer
+    extraction - 'reject' >> rejection
 
-    # From probing, we always go back to assessment for another round
-    probe_node - "assess" >> assess_node
+    # Create flow starting with data extraction
+    return AsyncFlow(start=extraction)
 
-    # Storage node completes the flow and provides resources
-    # No further connections needed as it returns "complete"
-
-    # Create flow starting with assessment
-    return AsyncFlow(start=assess_node)
-
-def create_shared_store(initial_complaint: str, user_contact: dict = None):
+def create_shared_store(conversation_history: list, task_metadata: dict = None, message_queue=None):
     """
-    Create initial shared store for complaint processing.
+    Create initial shared store for complaint processing following reference pattern.
 
     Args:
-        initial_complaint: The user's initial complaint text
-        user_contact: Optional user contact information
+        conversation_history: List of conversation messages
+        task_metadata: Task metadata with complaint topic, location, etc.
+        message_queue: Async queue for streaming responses
 
     Returns:
         dict: Initialized shared store
     """
     return {
-        "complaint": {
-            "original_text": initial_complaint,
-            "details": {},
-            "category": "",
-            "location": "",
-            "urgency": "",
-            "contact_info": user_contact or {}
+        "conversation_history": conversation_history,
+        "task_metadata": task_metadata or {
+            "complaint_topic": "",
+            "complaint_summary": "",
+            "complaint_location": "",
+            "complaint_quality": 0,
         },
-        "conversation_history": [],
-        "recommended_resources": [],
-        "agent_decision": "",
-        "is_complete": False,
-        "analysis": {},
-        "probing_areas": [],
-        "current_questions": [],
-        "probing_explanation": "",
-        "resource_recommendation": "",
-        "complaint_id": "",
-        "completion_message": ""
+        "message_queue": message_queue,
+        "status": "continue"
     }

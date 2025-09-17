@@ -1,71 +1,42 @@
 from .flow import create_complaint_flow, create_shared_store
 import asyncio
 
-async def run_agent_flow_async(initial_complaint: str, user_answers: list = None, user_contact: dict = None, message_queue = None):
+async def run_agent_flow_async(conversation_history: list, task_metadata: dict = None, message_queue = None):
     """
-    Process a complaint using the PocketFlow agent asynchronously.
+    Process a complaint using the PocketFlow agent following reference pattern.
 
     Args:
-        initial_complaint: The user's initial complaint text
-        user_answers: List of answers to previous questions (if any)
-        user_contact: Optional user contact information
+        conversation_history: List of conversation messages
+        task_metadata: Task metadata with complaint topic, location, etc.
         message_queue: Async queue for streaming responses
 
     Returns:
-        dict: Processing result with next_action, questions, resources, etc.
+        dict: Processing result with metadata and completion status
     """
     # Create the complaint processing flow
     complaint_flow = create_complaint_flow()
 
-    # Initialize shared store
-    shared = create_shared_store(initial_complaint, user_contact)
-
-    # Add message queue for streaming
-    if message_queue:
-        shared["message_queue"] = message_queue
-
-    # Add user answers to conversation history if provided
-    if user_answers:
-        current_questions = shared.get("current_questions", [])
-        for i, answer in enumerate(user_answers):
-            if i < len(current_questions):
-                shared["conversation_history"].append({
-                    "question": current_questions[i],
-                    "answer": answer
-                })
-
-                if not shared["complaint"]["details"]:
-                    shared["complaint"]["details"] = {}
-                shared["complaint"]["details"][f"detail_{i+1}"] = answer
+    # Initialize shared store following reference pattern
+    shared = create_shared_store(conversation_history, task_metadata, message_queue)
 
     # Run the async flow
     await complaint_flow.run_async(shared)
 
-    # Signal end of stream
-    if message_queue:
-        await message_queue.put(None)
-
     # Return results for post-processing
     return {
-        "status": "completed" if shared.get("is_complete") else "processing",
-        "agent_decision": shared.get("agent_decision", ""),
-        "is_complete": shared.get("is_complete", False),
+        "status": shared.get("status", "continue"),
+        "task_metadata": shared.get("task_metadata", {}),
         "complaint_id": shared.get("complaint_id", ""),
-        "completion_message": shared.get("completion_message", ""),
-        "questions": shared.get("current_questions", []),
-        "probing_explanation": shared.get("probing_explanation", ""),
-        "recommended_resources": shared.get("recommended_resources", []),
-        "resource_recommendation": shared.get("resource_recommendation", ""),
-        "analysis": shared.get("analysis", {})
+        "conversation_history": shared.get("conversation_history", [])
     }
 
 
 # Backward compatibility function (sync wrapper)
-def run_agent_flow(initial_complaint: str, user_answers: list = None, user_contact: dict = None):
+def run_agent_flow(conversation_history: list, task_metadata: dict = None):
     """
     Synchronous wrapper for backward compatibility.
     """
-    return asyncio.run(run_agent_flow_async(initial_complaint, user_answers, user_contact))
+    return asyncio.run(run_agent_flow_async(conversation_history, task_metadata))
 
 
 # Testing and usage examples
@@ -73,25 +44,24 @@ if __name__ == "__main__":
     # Test complaint processing
     print("Testing complaint processing...")
 
-    test_complaint = "The MRT is always delayed during peak hours at Dhoby Ghaut station"
+    test_conversation = [
+        {"role": "user", "content": "The MRT is always delayed during peak hours at Dhoby Ghaut station"}
+    ]
 
     try:
-        result = run_agent_flow(test_complaint)
+        result = run_agent_flow(test_conversation)
         print(f"Initial processing result: {result}")
 
-        # If questions were asked, simulate answers
-        if result.get("questions"):
-            print(f"Questions asked: {result['questions']}")
+        # Test with follow-up conversation
+        test_conversation_followup = [
+            {"role": "user", "content": "The MRT is always delayed during peak hours at Dhoby Ghaut station"},
+            {"role": "assistant", "content": "Can you tell me more about when this happens?"},
+            {"role": "user", "content": "This happens every morning around 8-9 AM and affects about 5-10 minutes delay consistently"}
+        ]
 
-            # Simulate user answers
-            test_answers = [
-                "This happens every morning around 8-9 AM",
-                "It affects about 5-10 minutes delay consistently"
-            ]
-
-            print("Processing with answers...")
-            final_result = run_agent_flow(test_complaint, test_answers)
-            print(f"Final result: {final_result}")
+        print("Processing with follow-up...")
+        final_result = run_agent_flow(test_conversation_followup)
+        print(f"Final result: {final_result}")
 
     except Exception as e:
         print(f"Error testing complaint processing: {e}")
