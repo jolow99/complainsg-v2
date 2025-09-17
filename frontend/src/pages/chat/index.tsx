@@ -64,11 +64,11 @@ export function ChatPage({ conversationId }: ChatPageProps) {
                 <div className="h-full flex items-center justify-center">
                   <Card className="w-full max-w-md text-center">
                     <CardHeader>
-                      <CardTitle className="text-xl">👋 Start a conversation!</CardTitle>
+                      <CardTitle className="text-xl">📋 Submit a Complaint</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-muted-foreground">
-                        Ask me anything. I'm here to help with questions, tasks, or just have a chat.
+                        Tell me about an issue you'd like to report to the Singapore government. I'll help you create a clear, actionable complaint.
                       </p>
                     </CardContent>
                   </Card>
@@ -175,7 +175,7 @@ export function ChatPage({ conversationId }: ChatPageProps) {
                 <Input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Type your message..."
+                  placeholder="Describe the issue you'd like to report..."
                   disabled={isLoading}
                   className="flex-1"
                 />

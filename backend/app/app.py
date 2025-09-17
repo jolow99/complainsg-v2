@@ -1,10 +1,12 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 from uuid import UUID
 import json
+import uuid
+import asyncio
 
 from app.db import User, get_async_session, create_db_and_tables
 from app.schemas import (
@@ -18,25 +20,29 @@ from app.conversations import (
     update_conversation, delete_conversation, add_message_to_conversation,
     create_conversation_with_messages
 )
-from agent import run_streaming_chat
+from agent import run_agent_flow
 from app.pulse import router as pulse_router
 
 app = FastAPI()
+
+# Dictionary to hold queues for different tasks
+task_queues = {}
+# Dictionary to hold metadata for different tasks
+task_metadata = {}
+# Lock to prevent race conditions when creating tasks
+task_creation_lock = asyncio.Lock()
 
 # Legacy Pydantic models for backwards compatibility
 class ChatMessage(BaseModel):
     user: str
     assistant: str
 
-# Schema for streaming chat
-class StreamingChatRequest(BaseModel):
-    message: str
-    conversation_id: Optional[UUID] = None
 
-class StreamingChatResponse(BaseModel):
-    response: str
-    conversation_history: List[Dict[str, str]]
-    conversation_id: str
+# Schema for complaint processing
+class ComplaintRequest(BaseModel):
+    message: str
+    user_answers: Optional[List[str]] = None
+    user_contact: Optional[Dict] = None
 
 # Add CORS middleware
 app.add_middleware(
@@ -73,6 +79,13 @@ app.include_router(
 
 # Include Pulse analytics routes
 app.include_router(pulse_router)
+
+# Async flow runner
+async def run_complaint_flow(shared_store: dict):
+    """Run the complaint processing flow asynchronously."""
+    from agent.flow import create_complaint_flow
+    flow = create_complaint_flow()
+    await flow.run_async(shared_store)
 
 @app.get("/")
 async def root():
@@ -170,51 +183,88 @@ async def delete_conversation_endpoint(
     return {"message": "Conversation deleted successfully"}
 
 
-
-
-
-@app.post("/chat/stream")
-async def streaming_chat(
-    request: StreamingChatRequest,
-    user: User = Depends(current_active_user),
-    db = Depends(get_async_session)
+# New complaint processing endpoints following the reference pattern
+@app.post("/api/complaint")
+async def create_complaint_task(
+    request: ComplaintRequest,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(current_active_user)
 ):
-    """Real streaming chat endpoint that streams response chunks."""
+    """Create a new complaint processing task."""
+    # Task ID for client reference
+    task_id = f"complaint_{uuid.uuid4().hex[:8]}"
 
-    # Load existing conversation if provided
-    conversation_history = []
-    if request.conversation_id:
-        conversation = await get_conversation_by_id(db, request.conversation_id, user.id)
-        if conversation:
-            # Build conversation history from database
-            for message_obj in conversation.messages:
-                if message_obj.role == "user":
-                    user_msg = message_obj.content
-                    assistant_msg = ""
-                else:  # assistant
-                    assistant_msg = message_obj.content
-                    conversation_history.append({"user": user_msg, "assistant": assistant_msg})
+    # Use lock to prevent race conditions
+    async with task_creation_lock:
+        # Check if task queue exists, if not create it
+        if task_id not in task_queues:
+            message_queue = asyncio.Queue()
+            task_queues[task_id] = message_queue
+        else:
+            raise HTTPException(status_code=400, detail=f"Task {task_id} already exists")
 
-    # Call agent directly and return its streaming response
-    from agent import run_streaming_chat
-
-    def generate():
-        try:
-            for chunk in run_streaming_chat(request.message, conversation_history):
-                yield chunk
-            yield "\n\n[STREAM_END]"
-        except Exception as e:
-            yield f"\n\n[ERROR]: {str(e)}"
-
-    return StreamingResponse(
-        generate(),
-        media_type="text/plain",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"
-        }
+    # Define shared store parameters
+    from agent.flow import create_shared_store
+    shared_store = create_shared_store(
+        request.message,
+        request.user_contact
     )
+
+    # Add user answers if provided
+    if request.user_answers:
+        for i, answer in enumerate(request.user_answers):
+            shared_store["conversation_history"].append({
+                "question": f"Question {i+1}",
+                "answer": answer
+            })
+
+    # Add task-specific parameters
+    shared_store.update({
+        "message_queue": message_queue,
+        "task_id": task_id,
+        "user_id": str(user.id)
+    })
+
+    # Start background flow
+    background_tasks.add_task(run_complaint_flow, shared_store)
+    return {"task_id": task_id}
+
+
+@app.get("/api/complaint/stream/{task_id}")
+async def stream_complaint_processing(task_id: str):
+    """Stream complaint processing results."""
+
+    # Use lock to prevent race conditions
+    async with task_creation_lock:
+        # If task doesn't exist, create the queue only (no flow execution)
+        if task_id not in task_queues:
+            message_queue = asyncio.Queue()
+            task_queues[task_id] = message_queue
+        else:
+            message_queue = task_queues[task_id]
+
+    async def stream_generator():
+        try:
+            while True:
+                message = await message_queue.get()
+                # If message is None, stream is done
+                if message is None:
+                    # Signal end of stream
+                    yield f"data: {json.dumps({'done': True})}\n\n"
+                    break
+                yield f"data: {json.dumps({'content': message})}\n\n"
+                message_queue.task_done()
+        finally:
+            # Clean up the queue
+            if task_id in task_queues:
+                del task_queues[task_id]
+
+    return StreamingResponse(stream_generator(), media_type="text/event-stream")
+
+
+
+
+
 
 
 # Endpoint to save conversation after streaming completes

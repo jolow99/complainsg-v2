@@ -1,4 +1,4 @@
-from pocketflow import Flow
+from pocketflow import AsyncFlow
 from .nodes import (
     InitialAssessmentNode,
     ProbingNode,
@@ -25,7 +25,7 @@ def create_complaint_flow():
     # No further connections needed as it returns "complete"
 
     # Create flow starting with assessment
-    return Flow(start=assess_node)
+    return AsyncFlow(start=assess_node)
 
 def create_shared_store(initial_complaint: str, user_contact: dict = None):
     """

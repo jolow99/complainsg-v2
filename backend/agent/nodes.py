@@ -1,21 +1,28 @@
 import json
 import yaml
 import asyncio
-from pocketflow import Node
+from pocketflow import AsyncNode
 from .utils import call_llm, get_singapore_resources
+from .utils.call_llm_async import call_llm_async
+from .utils.stream_llm_async import stream_llm_async
 from .utils.save_complaint import save_complaint
 
-class InitialAssessmentNode(Node):
+class InitialAssessmentNode(AsyncNode):
     """
     Analyzes initial complaint and decides next action.
     """
-    def prep(self, shared):
+    async def prep_async(self, shared):
         complaint = shared["complaint"]["original_text"]
         history = shared["conversation_history"]
-        return complaint, history
+        queue = shared.get("message_queue")
+        return complaint, history, queue
 
-    def exec(self, prep_res):
-        complaint, history = prep_res
+    async def exec_async(self, prep_res):
+        complaint, history, queue = prep_res
+
+        # Send initial status to queue
+        if queue:
+            await queue.put("🔍 Analyzing your complaint...\n\n")
 
         # Build context for LLM
         history_text = ""
@@ -64,7 +71,7 @@ probing_areas:
             {"role": "user", "content": prompt}
         ]
 
-        response = call_llm(messages)
+        response = await call_llm_async(messages)
         yaml_str = response.split("```yaml")[1].split("```")[0].strip()
         result = yaml.safe_load(yaml_str)
 
@@ -75,7 +82,7 @@ probing_areas:
 
         return result
 
-    def post(self, shared, prep_res, exec_res):
+    async def post_async(self, shared, prep_res, exec_res):
         # Store analysis results
         shared["analysis"] = exec_res["analysis"]
         shared["agent_decision"] = exec_res["decision"]
@@ -94,18 +101,19 @@ probing_areas:
         return exec_res["decision"]
 
 
-class ProbingNode(Node):
+class ProbingNode(AsyncNode):
     """
     Asks follow-up questions to clarify and enrich complaint details.
     """
-    def prep(self, shared):
+    async def prep_async(self, shared):
         complaint = shared["complaint"]
         probing_areas = shared.get("probing_areas", [])
         history = shared["conversation_history"]
-        return complaint, probing_areas, history
+        queue = shared.get("message_queue")
+        return complaint, probing_areas, history, queue
 
-    def exec(self, prep_res):
-        complaint, probing_areas, history = prep_res
+    async def exec_async(self, prep_res):
+        complaint, probing_areas, history, queue = prep_res
 
         # Determine what questions to ask based on probing areas
         areas_text = ", ".join(probing_areas) if probing_areas else "general details"
@@ -143,8 +151,19 @@ explanation: "Brief explanation of what these questions will help clarify"
             {"role": "user", "content": prompt}
         ]
 
-        response = call_llm(messages)
-        yaml_str = response.split("```yaml")[1].split("```")[0].strip()
+        # Stream the questions as they're generated
+        full_response = ""
+        if queue:
+            await queue.put("I need more information to help you better:\n\n")
+
+        async for chunk in stream_llm_async(messages):
+            if chunk:
+                full_response += chunk
+                if queue:
+                    await queue.put(chunk)
+
+        # Parse the complete response
+        yaml_str = full_response.split("```yaml")[1].split("```")[0].strip()
         result = yaml.safe_load(yaml_str)
 
         # Validate required fields
@@ -153,7 +172,7 @@ explanation: "Brief explanation of what these questions will help clarify"
 
         return result
 
-    def post(self, shared, prep_res, exec_res):
+    async def post_async(self, shared, prep_res, exec_res):
         # Store the questions that were asked
         shared["current_questions"] = exec_res["questions"]
         shared["probing_explanation"] = exec_res.get("explanation", "")
@@ -162,7 +181,7 @@ explanation: "Brief explanation of what these questions will help clarify"
         return "assess"
 
 
-class ResourceRecommendationNode(Node):
+class ResourceRecommendationNode(AsyncNode):
     """
     Suggests relevant Singapore government resources and contacts.
     """
@@ -215,14 +234,15 @@ Keep the response helpful, encouraging, and Singapore-specific.
         return "store"
 
 
-class ComplaintStorageNode(Node):
+class ComplaintStorageNode(AsyncNode):
     """
     Saves well-formed complaint to database and provides resource recommendations.
     """
-    def prep(self, shared):
+    async def prep_async(self, shared):
         complaint = shared["complaint"]
         category = complaint.get("category", "general")
         complaint_text = complaint["original_text"]
+        queue = shared.get("message_queue")
 
         return {
             "complaint_data": {
@@ -231,16 +251,26 @@ class ComplaintStorageNode(Node):
                 "analysis": shared.get("analysis", {})
             },
             "category": category,
-            "complaint_text": complaint_text
+            "complaint_text": complaint_text,
+            "queue": queue
         }
 
-    def exec(self, prep_res):
+    async def exec_async(self, prep_res):
         complaint_data = prep_res["complaint_data"]
         category = prep_res["category"]
         complaint_text = prep_res["complaint_text"]
+        queue = prep_res["queue"]
 
-        # Save complaint and get ID (run async function in sync context)
-        complaint_id = asyncio.run(save_complaint(complaint_data))
+        # Send saving status to queue
+        if queue:
+            await queue.put("💾 Saving your complaint to our database...\n\n")
+
+        # Save complaint and get ID (now properly async)
+        complaint_id = await save_complaint(complaint_data)
+
+        if queue:
+            await queue.put("✅ Complaint saved successfully!\n\n")
+            await queue.put("🔍 Finding relevant government resources for you...\n\n")
 
         # Get relevant resources for this complaint
         resources = get_singapore_resources(category)
@@ -271,15 +301,21 @@ Keep it concise but comprehensive.
             {"role": "user", "content": prompt}
         ]
 
-        recommendation_text = call_llm(messages)
+        # Stream the recommendation as it's generated
+        full_response = ""
+        async for chunk in stream_llm_async(messages):
+            if chunk:
+                full_response += chunk
+                if queue:
+                    await queue.put(chunk)
 
         return {
             "complaint_id": complaint_id,
             "resources": resources,
-            "recommendation": recommendation_text
+            "recommendation": full_response
         }
 
-    def post(self, shared, prep_res, exec_res):
+    async def post_async(self, shared, prep_res, exec_res):
         shared["complaint_id"] = exec_res["complaint_id"]
         shared["recommended_resources"] = exec_res["resources"]
         shared["resource_recommendation"] = exec_res["recommendation"]
@@ -290,13 +326,10 @@ Keep it concise but comprehensive.
         urgency = shared["complaint"].get("urgency", "medium")
 
         completion_message = f"""
-✅ Your complaint has been successfully processed and saved!
 
 📋 Complaint ID: {exec_res["complaint_id"]}
 📂 Category: {category.title()}
 ⚡ Urgency Level: {urgency.title()}
-
-{exec_res["recommendation"]}
 """
 
         shared["completion_message"] = completion_message

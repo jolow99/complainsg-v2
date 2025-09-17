@@ -96,7 +96,7 @@ export async function sendChatMessage(request: ChatRequest): Promise<ChatRespons
   return response.json()
 }
 
-// Streaming chat function - handles streaming response body
+// Streaming complaint function - handles new complaint processing endpoints
 export async function streamChatMessage(
   request: StreamingChatRequest,
   onChunk: (content: string) => void,
@@ -104,17 +104,33 @@ export async function streamChatMessage(
   onError: (error: string) => void
 ): Promise<void> {
   try {
-    const response = await fetch(`${API_BASE_URL}/chat/stream`, {
+    // Step 1: Create complaint task
+    const taskResponse = await fetch(`${API_BASE_URL}/api/complaint`, {
       method: 'POST',
       headers: await getAuthHeaders(),
-      body: JSON.stringify(request)
+      body: JSON.stringify({
+        message: request.message,
+        user_answers: [], // Can be extended later for multi-turn conversations
+        user_contact: null // Can be extended later for user contact info
+      })
     })
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+    if (!taskResponse.ok) {
+      throw new Error(`Failed to create complaint task: ${taskResponse.status}`)
     }
 
-    const reader = response.body?.getReader()
+    const { task_id } = await taskResponse.json()
+
+    // Step 2: Stream the results using Server-Sent Events
+    const streamResponse = await fetch(`${API_BASE_URL}/api/complaint/stream/${task_id}`, {
+      headers: await getAuthHeaders()
+    })
+
+    if (!streamResponse.ok) {
+      throw new Error(`Failed to stream complaint processing: ${streamResponse.status}`)
+    }
+
+    const reader = streamResponse.body?.getReader()
     if (!reader) {
       throw new Error('No response body available')
     }
@@ -127,32 +143,32 @@ export async function streamChatMessage(
       if (done) break
 
       const chunk = decoder.decode(value, { stream: true })
+      const lines = chunk.split('\n')
 
-      // Check for end marker
-      if (chunk.includes('[STREAM_END]')) {
-        const beforeEnd = chunk.split('[STREAM_END]')[0]
-        if (beforeEnd) {
-          fullResponse += beforeEnd
-          onChunk(beforeEnd)
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6))
+
+            if (data.done) {
+              // Streaming complete
+              onComplete(fullResponse, request.conversation_id?.toString())
+              return
+            }
+
+            if (data.content) {
+              fullResponse += data.content
+              onChunk(data.content)
+            }
+          } catch (parseError) {
+            // Skip malformed JSON lines
+            continue
+          }
         }
-        // Streaming complete
-        onComplete(fullResponse, request.conversation_id?.toString())
-        return
       }
-
-      // Check for error marker
-      if (chunk.includes('[ERROR]:')) {
-        const errorMsg = chunk.split('[ERROR]:')[1]?.trim() || 'Unknown error'
-        onError(errorMsg)
-        return
-      }
-
-      // Regular chunk - send to UI immediately
-      fullResponse += chunk
-      onChunk(chunk)
     }
 
-    // If we get here without seeing [STREAM_END], still complete
+    // If we get here without seeing done:true, still complete
     onComplete(fullResponse, request.conversation_id?.toString())
 
   } catch (error) {
