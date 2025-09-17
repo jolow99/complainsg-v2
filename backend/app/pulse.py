@@ -549,7 +549,7 @@ async def generate_sample_data(
         lng_offset = random.uniform(-0.005, 0.005)
 
         complaint = Complaint(
-            id=str(uuid.uuid4()),
+            id=uuid.uuid4(),
             title=random.choice(sample_complaints),
             original_text=f"Sample complaint about {random.choice(sample_complaints).lower()} in {location['name']}",
             category=random.choice(categories),
@@ -571,7 +571,7 @@ async def generate_sample_data(
 
         session.add(complaint)
         created_complaints.append({
-            "id": complaint.id,
+            "id": str(complaint.id),
             "title": complaint.title,
             "location": location['name'],
             "coordinates": [complaint.latitude, complaint.longitude]
