@@ -5,3 +5,4 @@ backend/agent/__pycache__
 backend/agent/utils/__pycache__
 CLAUDE.md
 POCKETFLOW.md
+certbot/

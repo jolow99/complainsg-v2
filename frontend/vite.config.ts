@@ -11,4 +11,10 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  preview: {
+    allowedHosts: ["complain.sg", "www.complain.sg"]
+  },
+  server: {
+    allowedHosts: ["complain.sg", "www.complain.sg"]
+  }
 })
