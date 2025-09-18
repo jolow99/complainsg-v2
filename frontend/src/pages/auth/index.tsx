@@ -63,11 +63,15 @@ export function AuthPage() {
       <DarkModeToggle fixed />
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">
-            {isRegistering ? 'Create Account' : 'Welcome to Sail'}
+          <CardTitle className="text-2xl font-bold flex items-center justify-center">
+            <span className="mr-2">🇸🇬</span>
+            {isRegistering ? 'Join ComplainSG' : 'Welcome to ComplainSG'}
           </CardTitle>
           <CardDescription>
-            {isRegistering ? 'Sign up for a new account' : 'Sign in to your account'}
+            {isRegistering
+              ? 'Register to start complaining better and make your voice heard in Singapore'
+              : 'Sign in to continue improving how Singapore handles feedback'
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -191,13 +195,6 @@ export function AuthPage() {
                 {isRegistering ? 'Sign In' : 'Create Account'}
               </Button>
             </p>
-            {isRegistering && (
-              <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950 rounded-md">
-                <p className="text-xs text-blue-800 dark:text-blue-200">
-                  🎉 <strong>Pro tip:</strong> The first user to register becomes admin automatically!
-                </p>
-              </div>
-            )}
           </div>
         </CardContent>
       </Card>
